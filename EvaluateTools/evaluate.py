@@ -115,7 +115,7 @@ def evaluate(
     dev_dataset = SQuADDataset(dev_npz)
 
     ckpt_path = os.path.join(save_dir, ckpt_name)
-    ckpt = torch.load(ckpt_path, map_location=DEVICE)
+    ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
     model.load_state_dict(ckpt["model"])
 
     metrics, ans = run_eval(

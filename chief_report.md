@@ -601,6 +601,30 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-N002 ⚠️ (Compatibility Note): `EvaluateTools/evaluate.py` checkpoint load path
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | warning |
+| Category | environment_compatibility |
+| Assignment | Stage I - Task 2: Train/Eval Loop |
+| Confidence | high |
+| Status | noted |
+| Discovered by | runtime_observation |
+
+**Symptom**: On PyTorch 2.6+, checkpoint loading may fail due to the changed default behavior of `torch.load`.
+
+**Root Cause**: PyTorch 2.6 changed the default `weights_only` value in `torch.load` from `False` to `True`. Legacy checkpoints or load paths expecting the old default can fail without an explicit override.
+
+**Fix/Workaround**: Set `weights_only=False` explicitly in the affected `torch.load(...)` call when loading trusted internal checkpoints for this assignment workflow.
+
+**Warning Scope**: This is an environment/version compatibility issue, not a core model-logic bug in the assignment codebase.
+
+**Impact**: If unhandled on newer environments, evaluation/checkpoint restore can fail even when training artifacts are otherwise valid.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
