@@ -610,7 +610,9 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Fix**: Change to `argparse.Namespace(**{k: v for k, v in locals().items()})`.
 
-**Impact on Training/Evaluation**: This bug blocks training at startup, so model construction, forward/backward propagation, optimizer updates, checkpointing, and validation evaluation cannot proceed.
+**BUG Impact (if not fixed)**: Training fails immediately at startup with a `TypeError`, so the pipeline cannot reach cache checks, model initialization, forward/backward propagation, optimizer updates, checkpoint saves, or validation evaluation.
+
+**FIX Impact (after fixed)**: The training entrypoint can construct a valid runtime namespace and proceed into data checks, model build, optimization steps, checkpointing, and evaluation as expected for Stage I functionality recovery.
 
 **Chief Reasoning**:
 - *chief_a*: TrainTools/train.py line 88: `argparse.Namespace({k: v ...})` passes a dict as a positional argument. Namespace.__init__ only accepts **kwargs. TypeError on every training invocation. Fix: `Namespace(**{k: v ...})`.
