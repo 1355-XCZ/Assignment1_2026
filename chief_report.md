@@ -182,7 +182,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-007: `Models/conv.py` L96
+### BUG-007/008 ✅: `Models/conv.py` L124
 
 | Field | Value |
 |-------|-------|
@@ -191,6 +191,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | shape_mismatch |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gpt-5.4-pro[reason:xhigh] | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] |
 
 **Symptom**: 2D convolutions with padding crash during width padding because the width-pad tensor height does not match the already height-padded input.
@@ -199,32 +200,13 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Fix**: Allocate `pad_w` with the updated height after height padding, e.g. `x.new_zeros(B, C_in, x.size(2), p)`.
 
+**BUG Impact (if not fixed)**: Conv2d width-padding concatenation fails due to height mismatch (`H` vs `H+2p`), causing runtime shape errors in the convolution stack and blocking training execution.
+
+**FIX Impact (after fixed)**: Width padding now uses the post-height-padding size (`x.size(2)`), so tensor dimensions are consistent for concatenation and Conv2d forward execution proceeds normally.
+
 **Chief Reasoning**:
 - *chief_a*: Models/conv.py line 116: `pad_w = x.new_zeros(B, C_in, H, p)` uses original H after x was already height-padded to H+2p. torch.cat along dim=3 requires matching dim=2 sizes: x has H+2p but pad_w has H. Fix: use x.size(2) instead of H.
 - *chief_b*: Models/conv.py line ~116: after height padding `x = torch.cat([pad_h, x, pad_h], dim=2)` makes x [B,C_in,H+2p,W], but `pad_w = x.new_zeros(B, C_in, H, p)` still uses original H. torch.cat along dim 3 fails because dim 2 is H+2p vs H.
-
----
-
-### BUG-008: `Models/conv.py` L116
-
-| Field | Value |
-|-------|-------|
-| Stage | stage1 |
-| Severity | critical |
-| Category | shape_mismatch |
-| Assignment | Stage I - Task 3: Model Architecture |
-| Confidence | high |
-| Discovered by | claude-opus-4-6[think:adaptive] |
-
-**Symptom**: Conv2d crashes with a shape-mismatch error during width-padding concatenation because pad_w height doesn't match the already height-padded tensor.
-
-**Root Cause**: pad_w is created with the original height H instead of the post-padding height H+2p (after x was already padded along dim 2).
-
-**Fix**: Change x.new_zeros(B, C_in, H, p) to x.new_zeros(B, C_in, H + 2*p, p) or use x.size(2).
-
-**Chief Reasoning**:
-- *chief_a*: Exact duplicate of BUG-010. Same root cause: Conv2d pad_w uses original H instead of post-padding x.size(2).
-- *chief_b*: Exact duplicate of BUG-010: same root cause (pad_w height mismatch after height padding), same file, same fix.
 
 ---
 

@@ -121,7 +121,7 @@ class Conv2d(nn.Module):
             p = self.padding
             pad_h = x.new_zeros(B, C_in, p, W)
             x = torch.cat([pad_h, x, pad_h], dim=2)       # [B, C_in, H+2p, W]
-            pad_w = x.new_zeros(B, C_in, H, p)
+            pad_w = x.new_zeros(B, C_in, x.size(2), p)
             x = torch.cat([pad_w, x, pad_w], dim=3)       # [B, C_in, H+2p, W+2p]
 
         # 2. Sliding window along height then width
