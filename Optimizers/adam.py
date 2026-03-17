@@ -66,7 +66,7 @@ class Adam(Optimizer):
 
                 # Update biased moment estimates
                 m.mul_(beta1).add_(grad, alpha=1.0 - beta1)
-                v.mul_(beta2).add_(grad, alpha=1.0 - beta2)
+                v.mul_(beta2).add_(grad.pow(2), alpha=1.0 - beta2)
 
                 # Bias correction
                 bias_correction1 = 1.0 - beta1 ** t

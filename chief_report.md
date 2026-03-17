@@ -843,6 +843,35 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-053 ✅ (Ambiguous Priority): `Optimizers/adam.py` L69
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but currently causes Stage I loss instability/NaN risk) |
+| Severity | major |
+| Category | optimizer (Adam path, not lr_scheduler) |
+| Assignment | Stage II - Task 1: Optimizer |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
+
+**Symptom**: Under `optimizer_name="adam"`, loss can become unstable or fail to converge, and in practical runs may trend toward exploding values/NaN.
+
+**Root Cause**: The second-moment accumulator `v` was updated with `grad` instead of `grad^2`, breaking Adam's variance estimate and adaptive step scaling.
+
+**Fix**: Change second-moment update to use squared gradients:
+- `v.mul_(beta2).add_(grad.pow(2), alpha=1.0 - beta2)`
+
+**BUG Impact (if not fixed)**: Adam loses its adaptive denominator semantics because `v` no longer tracks gradient variance, which can produce badly scaled updates and unstable training behavior.
+
+**FIX Impact (after fixed)**: `v` correctly tracks EMA of squared gradients, restoring Adam's adaptive scaling and improving optimization stability under the Adam path.
+
+**Chief Reasoning**:
+- *chief_a*: Optimizers/adam.py line 67: `v.mul_(beta2).add_(grad, alpha=1-beta2)` should use `grad**2`; otherwise `v` tracks nearly the same quantity as `m`, undermining adaptive learning-rate behavior.
+- *chief_b*: Second moment must be squared-gradient EMA. Using raw gradient corrupts denominator scaling and can destabilize updates; fix is `grad.pow(2)`.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -1114,29 +1143,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Optimizers/adam.py line 53: `grad = grad.add(p, alpha=-wd)` computes grad - wd*p. L2 regularization requires grad + wd*p. The negative sign pushes weights away from zero (anti-regularization). Fix: alpha=wd (positive).
 - *chief_b*: Optimizers/adam.py line 53: `grad = grad.add(p, alpha=-wd)` computes grad - wd*p. L2 regularization requires grad + wd*p (pushing parameters toward zero). The negative sign pushes parameters away from zero. Fix: alpha=wd (positive).
-
----
-
-### BUG-053: `Optimizers/adam.py` L67
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | optimizer |
-| Assignment | Stage II - Task 1: Optimizer |
-| Confidence | high |
-| Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
-
-**Symptom**: Adam optimizer fails to converge because the second moment estimate uses the gradient instead of the squared gradient.
-
-**Root Cause**: grad is added to v instead of grad**2.
-
-**Fix**: Change grad to grad.pow(2) or grad * grad in the second moment update.
-
-**Chief Reasoning**:
-- *chief_a*: Optimizers/adam.py line 67: `v.mul_(beta2).add_(grad, alpha=1-beta2)`. The second moment should track grad**2, not grad. Using raw grad makes v an EMA of the gradient (like m), destroying Adam's adaptive learning rate mechanism. Fix: add grad.pow(2) instead of grad.
-- *chief_b*: Optimizers/adam.py line ~67: `v.mul_(beta2).add_(grad, alpha=1.0 - beta2)`. The second moment should track grad**2, not grad. Without squaring, v tracks the same quantity as m (first moment), breaking Adam's adaptive learning rate. Fix: `v.mul_(beta2).add_(grad.pow(2), alpha=1.0 - beta2)`.
 
 ---
 
