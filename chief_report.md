@@ -648,6 +648,30 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-N001 ✅: `Schedulers/scheduler.py` L37
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | critical |
+| Category | lr_scheduler |
+| Assignment | Stage I - Task 2: Train/Eval Loop |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | manual testing |
+
+**Symptom**: Calling `train(scheduler_name="none", ...)` fails before training starts because the `"none"` scheduler option is not properly available in the scheduler path.
+
+**Root Cause**: The scheduler module did not provide a valid no-op scheduler factory for the `"none"` option in a way that `train.py` could reliably resolve and use, so scheduler selection failed for the notebook's vanilla configuration.
+
+**Fix**: Defined a `none_scheduler(optimizer, args)` factory function that returns a `LambdaLR` with `lr_lambda=lambda _: 1.0` (constant learning rate, no scheduling).
+
+**BUG Impact (if not fixed)**: Training cannot proceed with the default notebook configuration (`scheduler_name="none"`). The run fails before optimizer/scheduler setup and before entering the training loop.
+
+**FIX Impact (after fixed)**: The `"none"` scheduler option is now available in the registry. Training proceeds past scheduler validation with a constant learning rate as intended by the vanilla recipe.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |

@@ -27,10 +27,16 @@ def lambda_scheduler(optimizer, args):
     return LambdaLR(optimizer, lr_lambda=lambda _: 1.0)
 
 
+def none_scheduler(optimizer, args):
+    """No-op scheduler — learning rate stays constant."""
+    return LambdaLR(optimizer, lr_lambda=lambda _: 1.0)
+
+
 # ── Registry ─────────────────────────────────────────────────────────────────
 
 schedulers = {
     "cosine":  cosine_scheduler,
     "step":    step_scheduler,
     "lambda":  lambda_scheduler,
+    "none":    none_scheduler,
 }
