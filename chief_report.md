@@ -429,7 +429,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-023: `Optimizers/sgd_momentum.py` L43
+### BUG-023 ✅: `Optimizers/sgd_momentum.py` L49
 
 | Field | Value |
 |-------|-------|
@@ -438,6 +438,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | optimizer |
 | Assignment | Stage I - Task 2: Train/Eval Loop |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: KeyError: 'velocity' on every step because the buffer is stored under 'vel' but accessed as 'velocity'
@@ -445,6 +446,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: Initialization sets state['vel'] but the read on the next line accesses state['velocity']
 
 **Fix**: Change state['vel'] to state['velocity'] (or vice versa, use a consistent key name)
+
+**BUG Impact (if not fixed)**: `sgd_momentum` crashes on the first optimizer step with `KeyError`, so training cannot proceed when this optimizer option is selected.
+
+**FIX Impact (after fixed)**: Momentum state initialization and access now use the same key, allowing `sgd_momentum` updates to execute normally.
 
 **Chief Reasoning**:
 - *chief_a*: Optimizers/sgd_momentum.py line 43-44: Velocity buffer stored as state['vel'] but accessed as state['velocity']. KeyError on first step.

@@ -46,7 +46,7 @@ class SGDMomentum(Optimizer):
 
                 # Initialise velocity buffer on first step
                 if "velocity" not in state:
-                    state["vel"] = torch.zeros_like(p)
+                    state["velocity"] = torch.zeros_like(p)
 
                 v = state["velocity"]
 
