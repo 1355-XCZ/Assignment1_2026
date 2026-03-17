@@ -813,6 +813,36 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-039/040 ✅ (Ambiguous Priority): `Optimizers/adam.py` L72-73
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but currently causes Stage I loss instability/NaN risk) |
+| Severity | critical |
+| Category | optimizer (Adam path, not lr_scheduler) |
+| Assignment | Stage II - Task 1: Optimizer |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | claude-opus-4-6[think:adaptive] (chief) |
+
+**Symptom**: Under `optimizer_name="adam"`, training loss can become unstable or diverge after early steps, and may trend toward NaN.
+
+**Root Cause**: Adam bias correction uses multiplication instead of exponentiation in both lines (`1.0 - beta1 * t`, `1.0 - beta2 * t`), yielding invalid correction factors for t >= 2. This issue belongs to the optimizer update path, not the scheduler.
+
+**Fix**: Change both formulas to exponentiation:
+- `bias_correction1 = 1.0 - beta1 ** t`
+- `bias_correction2 = 1.0 - beta2 ** t`
+
+**BUG Impact (if not fixed)**: Corrected moments can flip sign or scale incorrectly, producing wrong update magnitudes/directions in Adam and causing unstable training behavior (including divergence/NaN-prone runs).
+
+**FIX Impact (after fixed)**: Bias correction follows standard Adam semantics across steps, stabilizing update scaling and improving training convergence behavior under the Adam optimizer.
+
+**Chief Reasoning**:
+- *chief_a*: Optimizers/adam.py lines 72-73: using `1.0 - beta * t` instead of `1.0 - beta ** t` makes bias correction invalid after step 1; with beta1=0.8 and t=2, correction becomes -0.6 instead of 0.36, which can reverse update behavior.
+- *chief_b*: The `*` vs `**` typo is subtle because step 1 values match, but from step 2 onward it breaks Adam's correction math and destabilizes optimization.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -879,48 +909,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Models/encoder.py lines 117-118: `out = self.self_att(out, mask)` then immediately `out = res`. The attention output is discarded and replaced by the residual. The attention sublayer contributes nothing. Fix: `out = out + res` (or `out = self.drop(out) + res`).
 - *chief_b*: Models/encoder.py lines 117-118: `out = self.self_att(out, mask)` immediately followed by `out = res`. The attention output is completely discarded and replaced by the pre-attention residual. The attention sublayer contributes nothing. Fix: `out = out + res` (or `out = self.drop(out) + res`).
-
----
-
-### BUG-039: `Optimizers/adam.py` L68
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | critical |
-| Category | optimizer |
-| Assignment | Stage II - Task 1: Optimizer |
-| Confidence | ? |
-| Discovered by | claude-opus-4-6[think:adaptive] (chief) |
-
-**Symptom**: After step 1, Adam bias correction becomes negative (e.g., at t=2 with beta1=0.8: 1-0.8*2=-0.6), flipping the sign of m_hat and v_hat. This reverses the update direction and causes divergence.
-
-**Root Cause**: Bias correction uses multiplication (`1.0 - beta1 * t`) instead of exponentiation (`1.0 - beta1 ** t`). At t=1 these are identical (0.8*1 = 0.8^1), but at t≥2 they diverge dramatically. With beta1=0.8, t=2: code gives 1-1.6=-0.6 vs correct 1-0.64=0.36.
-
-**Fix**: Change `1.0 - beta1 * t` to `1.0 - beta1 ** t` and `1.0 - beta2 * t` to `1.0 - beta2 ** t`.
-
-**Why Missed by Teams**: Masked by BUG-023 (KeyError on state['m'] prevents execution from ever reaching the bias correction lines). Audit teams likely never traced code past the KeyError. The formula also looks superficially correct since * and ** give identical results at t=1.
-
----
-
-### BUG-040: `Optimizers/adam.py` L70
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | critical |
-| Category | optimizer |
-| Assignment | Stage II - Task 9: Optimizer |
-| Confidence | ? |
-| Discovered by | claude-opus-4-6[think:adaptive] (chief) |
-
-**Symptom**: After step 1, Adam's bias correction becomes negative (e.g., at step 2 with beta1=0.8: 1 - 0.8*2 = -0.6), flipping the sign of the corrected first moment m_hat. This causes parameter updates in the wrong direction, leading to immediate divergence.
-
-**Root Cause**: Bias correction uses multiplication instead of exponentiation: `bias_correction1 = 1.0 - beta1 * t` and `bias_correction2 = 1.0 - beta2 * t`. The correct Adam formula is `1.0 - beta1 ** t` and `1.0 - beta2 ** t`.
-
-**Fix**: Change `1.0 - beta1 * t` to `1.0 - beta1 ** t` and `1.0 - beta2 * t` to `1.0 - beta2 ** t`.
-
-**Why Missed by Teams**: Teams found three other Adam bugs (BUG-023 key mismatch, BUG-053 weight decay sign, BUG-054 missing grad squaring) but overlooked this subtle arithmetic error. At step 1, `beta * t` and `beta ** t` give identical results (0.8*1 = 0.8^1 = 0.8), so the bug only manifests from step 2 onward. The `*` vs `**` visual difference is easy to miss during code review, especially when multiple other bugs in the same function demand attention.
 
 ---
 
