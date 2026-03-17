@@ -90,7 +90,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-003: `Losses/loss.py` L6
+### BUG-003 ✅: `Losses/loss.py` L7
 
 | Field | Value |
 |-------|-------|
@@ -99,6 +99,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | loss_function |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: F.nll_loss receives target tensor (y1) as input and log-prob tensor (p1) as target, causing a shape/dtype mismatch crash.
@@ -106,6 +107,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: Arguments to the first F.nll_loss call are swapped: F.nll_loss(y1, p1) instead of F.nll_loss(p1, y1).
 
 **Fix**: Change `F.nll_loss(y1, p1)` to `F.nll_loss(p1, y1)` so input (log-probs) is the first argument and target (indices) is the second.
+
+**BUG Impact (if not fixed)**: Training loss computation fails due to invalid input/target types and shapes in `F.nll_loss`, causing immediate runtime errors and blocking optimization steps.
+
+**FIX Impact (after fixed)**: NLL loss now receives valid `(log_probs, target_indices)` arguments, enabling correct span-loss computation and stable backpropagation through the training loop.
 
 **Chief Reasoning**:
 - *chief_a*: Losses/loss.py line 6: `F.nll_loss(y1, p1)` — F.nll_loss signature is (input, target). y1 is a LongTensor of target indices, p1 is a float log-prob tensor. Passing y1 as input triggers a dtype/shape crash. Second call `F.nll_loss(p2, y2)` is correct. Only the first call is swapped.
