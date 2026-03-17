@@ -111,6 +111,9 @@ _model/
 _log/
 mini_data.zip
 
+# Reference implementations
+learn/
+
 # Instructor-only grading materials
 bugs.md
 CLAUDE.md

@@ -9,11 +9,15 @@ from Optimizers.sgd_momentum import SGDMomentum
 # the paired `warmup_lambda` scheduler (which outputs the actual lr values).
 # `sgd` and `sgd_momentum` use args.learning_rate directly and should be
 # paired with `cosine` or `step` schedulers.
+#
+# Haoguang Zhou (update): Adam now uses `args.learning_rate` as the base LR
+# for consistency across optimizers. The scheduler modulates this base LR
+# rather than serving as the sole LR source.
 
 def adam(params, args):
     return Adam(
         params=params,
-        lr=1.0,
+        lr=args.learning_rate,
         betas=(args.beta1, args.beta2),
         eps=getattr(args, "eps", 1e-7),
         weight_decay=args.weight_decay,
