@@ -279,7 +279,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-012: `Models/embedding.py` L17
+### BUG-012/013 ✅: `Models/embedding.py` L19
 
 | Field | Value |
 |-------|-------|
@@ -288,6 +288,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | embedding |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: The highway layers receive batch size as the feature dimension, causing linear-layer shape errors or cross-example mixing if sizes happen to match.
@@ -296,32 +297,13 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Fix**: Transpose dimensions 1 and 2 (or permute to [B, L, C]) before the linear layers, then transpose back.
 
+**BUG Impact (if not fixed)**: The highway MLP consumes the batch axis as feature dimension, which can trigger shape/runtime errors and, in edge cases, mix information across samples, corrupting embedding representations.
+
+**FIX Impact (after fixed)**: Highway now receives tensors in `[B, L, C]` as intended, so linear projections operate on feature channels correctly and embedding flow remains sample-independent and shape-consistent.
+
 **Chief Reasoning**:
 - *chief_a*: Models/embedding.py line 17: `x.transpose(0, 2)` on [B,C,L] gives [L,C,B], not [B,L,C]. Linear layers then operate on the B dimension as features. If batch_size ≠ d_word+d_char, it crashes; if they happen to match, it cross-contaminates batch elements. Return `x.transpose(1,2)` also yields wrong shape [L,B,C] instead of [B,C,L]. Fix: use transpose(1,2).
 - *chief_b*: Models/embedding.py Highway.forward: `x.transpose(0, 2)` on [B,C,L] produces [L,C,B], feeding batch dim (B) into linear layers expecting feature dim (C). When B≠C (almost always), linear layer raises a size mismatch. Fix: `x.transpose(1, 2)` → [B,L,C].
-
----
-
-### BUG-013: `Models/embedding.py` L31
-
-| Field | Value |
-|-------|-------|
-| Stage | stage1 |
-| Severity | critical |
-| Category | embedding |
-| Assignment | Stage I - Task 3: Model Architecture |
-| Confidence | high |
-| Discovered by | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] |
-
-**Symptom**: Highway network linear layers receive the batch dimension as features, crashing when batch_size != d_word+d_char.
-
-**Root Cause**: x.transpose(0, 2) swaps batch and length dims, producing [L,C,B] instead of [B,L,C]; should swap dims 1 and 2.
-
-**Fix**: Change x.transpose(0, 2) to x.transpose(1, 2).
-
-**Chief Reasoning**:
-- *chief_a*: Exact duplicate of BUG-015. Same Highway transpose bug.
-- *chief_b*: Duplicate of BUG-015. Same transpose(0,2) → transpose(1,2) fix in Highway.forward.
 
 ---
 

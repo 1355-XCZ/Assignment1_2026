@@ -16,7 +16,7 @@ class Highway(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: [B, C, L] -> [B, L, C]
-        x = x.transpose(0, 2)
+        x = x.transpose(1, 2)
         for i in range(self.n):
             gate = torch.sigmoid(self.gate[i](x))
             nonlinear = self.act(self.linear[i](x))
