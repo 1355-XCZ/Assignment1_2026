@@ -52,7 +52,7 @@ class Conv1d(nn.Module):
 
         # 2. Sliding window: tensor.unfold(dim, size, step) → [B, C_in, L_out, k]
         L_out = x.size(2) - self.kernel_size + 1
-        x_unf = x.unfold(1, self.kernel_size, 1)  # [B, C_in, L_out, k]
+        x_unf = x.unfold(2, self.kernel_size, 1)  # [B, C_in, L_out, k]
 
         # 3. Grouped multiply-accumulate
         G       = self.groups
@@ -172,4 +172,4 @@ class DepthwiseSeparableConv(nn.Module):
             constant_(self.pointwise_conv.bias, 0.0)
 
     def forward(self, x):
-        return self.depthwise_conv(self.pointwise_conv(x))
+        return self.pointwise_conv(self.depthwise_conv(x))

@@ -159,7 +159,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-006: `Models/conv.py` L44
+### BUG-006 ✅: `Models/conv.py` L44
 
 | Field | Value |
 |-------|-------|
@@ -168,6 +168,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | shape_mismatch |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: Conv1d unfold operates on channel dimension (dim=1) instead of spatial dimension (dim=2), producing wrong output shape and incorrect convolution
@@ -175,6 +176,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: `x.unfold(1, self.kernel_size, 1)` unfolds along C_in instead of L; should be `x.unfold(2, self.kernel_size, 1)`
 
 **Fix**: Change `x.unfold(1, ...)` to `x.unfold(2, ...)`
+
+**BUG Impact (if not fixed)**: Conv1d extracts sliding windows over the channel axis instead of the sequence axis, producing invalid tensor layouts for grouped convolution and causing shape/runtime failures in downstream views and multiplies.
+
+**FIX Impact (after fixed)**: Unfold now operates over the sequence length dimension, so convolution windows and grouped tensor reshapes are aligned with the intended Conv1d computation and the forward path executes correctly.
 
 **Chief Reasoning**:
 - *chief_a*: Models/conv.py line 44: `x.unfold(1, self.kernel_size, 1)` unfolds along dim 1 (C_in) instead of dim 2 (L). For x=[B,C_in,L], this yields [B,C_in-k+1,L,k] instead of [B,C_in,L_out,k]. Subsequent view(B,G,C_in_g,L_out,k) crashes because C_in-k+1 ≠ C_in in general.
@@ -210,7 +215,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-009: `Models/conv.py` L136
+### BUG-009/010/011 ✅: `Models/conv.py` L175
 
 | Field | Value |
 |-------|-------|
@@ -219,6 +224,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | other |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gpt-5.4-pro[reason:xhigh] |
 
 **Symptom**: Layers where `in_ch != out_ch` fail with channel/group mismatches, and even when shapes happen to match the separable convolution computes the wrong operation.
@@ -227,55 +233,13 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Fix**: Apply depthwise first and pointwise second: `return self.pointwise_conv(self.depthwise_conv(x))`.
 
+**BUG Impact (if not fixed)**: When `in_ch != out_ch`, pointwise-first changes channel count before depthwise grouped convolution, causing channel/group mismatches and runtime crashes; even when shapes accidentally match, the separable-convolution semantics remain incorrect.
+
+**FIX Impact (after fixed)**: Depthwise is applied before pointwise as intended, preserving grouped-convolution channel assumptions and restoring correct depthwise-separable computation in both crash-prone and shape-compatible cases.
+
 **Chief Reasoning**:
 - *chief_a*: Models/conv.py line ~152: `return self.depthwise_conv(self.pointwise_conv(x))` applies pointwise(in→out) first, then depthwise(in→in, groups=in). When in_ch≠out_ch (e.g., context_conv: 364→96), the depthwise receives 96 channels but has groups=364 → crash. Even when in_ch==out_ch, the computation is semantically wrong (standard DSConv is depthwise-then-pointwise).
 - *chief_b*: Models/conv.py line ~152: `return self.depthwise_conv(self.pointwise_conv(x))` applies pointwise first then depthwise. For context_conv where in_ch=d_word+d_char=364 and out_ch=d_model=96, pointwise changes channels to 96, then depthwise (groups=364, expecting 364 channels) receives 96 channels → crash. Fix: swap to pointwise(depthwise(x)).
-
----
-
-### BUG-010: `Models/conv.py` L152
-
-| Field | Value |
-|-------|-------|
-| Stage | stage1 |
-| Severity | critical |
-| Category | other |
-| Assignment | Stage I - Task 3: Model Architecture |
-| Confidence | high |
-| Discovered by | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
-
-**Symptom**: DepthwiseSeparableConv applies pointwise then depthwise; when in_channels != out_channels the depthwise conv receives a tensor with the wrong number of channels and crashes.
-
-**Root Cause**: Forward calls self.depthwise_conv(self.pointwise_conv(x)) — the order is reversed; depthwise should precede pointwise.
-
-**Fix**: Change to return self.pointwise_conv(self.depthwise_conv(x)).
-
-**Chief Reasoning**:
-- *chief_a*: Exact duplicate of BUG-012. Same reversed depthwise/pointwise order in DepthwiseSeparableConv.forward.
-- *chief_b*: Duplicate of BUG-012. Same root cause, same code location, same fix.
-
----
-
-### BUG-011: `Models/conv.py` L174
-
-| Field | Value |
-|-------|-------|
-| Stage | stage1 |
-| Severity | critical |
-| Category | other |
-| Assignment | Stage I - Task 3: Model Architecture |
-| Confidence | high |
-| Discovered by | claude-opus-4-6[think:adaptive] | gpt-5.4-pro[reason:xhigh] |
-
-**Symptom**: DepthwiseSeparableConv applies pointwise convolution before depthwise, reversing the intended order. When in_channels != out_channels the depthwise grouped conv receives the wrong number of channels and crashes.
-
-**Root Cause**: return self.depthwise_conv(self.pointwise_conv(x)) applies pointwise first; correct order is depthwise then pointwise.
-
-**Fix**: Change to return self.pointwise_conv(self.depthwise_conv(x)).
-
-**Chief Reasoning**:
-- *chief_a*: Exact duplicate of BUG-012.
-- *chief_b*: Duplicate of BUG-012. Same root cause, same code location, same fix.
 
 ---
 
@@ -874,7 +838,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-045: `Models/conv.py` L142
+### BUG-045 ⚠️(Duplicate of Stage1 BUG-009/010/011 [✅]): `Models/conv.py` L142
 
 | Field | Value |
 |-------|-------|
@@ -897,7 +861,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-046: `Models/conv.py` L159
+### BUG-046 ⚠️(Duplicate of Stage1 BUG-009/010/011 [✅]): `Models/conv.py` L159
 
 | Field | Value |
 |-------|-------|
@@ -920,7 +884,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-047: `Models/conv.py` L172
+### BUG-047 ⚠️(Duplicate of Stage1 BUG-009/010/011 [✅]): `Models/conv.py` L172
 
 | Field | Value |
 |-------|-------|
