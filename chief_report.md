@@ -406,7 +406,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-022: `Optimizers/adam.py` L62
+### BUG-022 ✅: `Optimizers/adam.py` L62
 
 | Field | Value |
 |-------|-------|
@@ -415,13 +415,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | optimizer |
 | Assignment | Stage I - Task 2: Train/Eval Loop |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: KeyError: 'm' when trying to access the first moment buffer.
 
 **Root Cause**: The state dictionary keys are initialized as 'exp_avg' and 'exp_avg_sq' but accessed as 'm' and 'v'.
 
-**Fix**: Use consistent keys, e.g., 'm' and 'v', for both initialization and access.
+**Fix**: Use consistent keys for initialization and access. Current fix uses `exp_avg` and `exp_avg_sq` in both places.
+
+**BUG Impact (if not fixed)**: Adam crashes at the first optimizer step with `KeyError: 'm'`, so training cannot proceed when `optimizer_name="adam"` is selected.
+
+**FIX Impact (after fixed)**: Adam state buffers are initialized and read with consistent keys, removing the startup crash and allowing optimizer steps to run normally.
 
 **Chief Reasoning**:
 - *chief_a*: Optimizers/adam.py: State initialized as state['exp_avg'] and state['exp_avg_sq'] at line ~62, but accessed as state['m'] and state['v'] at line ~65. KeyError: 'm' on the first optimizer step.

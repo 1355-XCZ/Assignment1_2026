@@ -60,7 +60,7 @@ class Adam(Optimizer):
                     state["exp_avg"] = torch.zeros_like(p)  # 1st moment (mean)
                     state["exp_avg_sq"] = torch.zeros_like(p)  # 2nd moment (variance)
 
-                m, v = state["m"], state["v"]
+                m, v = state["exp_avg"], state["exp_avg_sq"]
                 state["step"] += 1
                 t = state["step"]
 
