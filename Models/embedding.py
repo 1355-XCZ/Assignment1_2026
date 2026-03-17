@@ -36,7 +36,7 @@ class Embedding(nn.Module):
     def forward(self, ch_emb: torch.Tensor, wd_emb: torch.Tensor) -> torch.Tensor:
         # ch_emb: [B, L, char_len, d_char]
         # wd_emb: [B, L, d_word]
-        ch_emb = ch_emb.permute(0, 2, 1, 3)  # [B, d_char, L, char_len]
+        ch_emb = ch_emb.permute(0, 3, 1, 2)  # [B, d_char, L, char_len]
         ch_emb = self.drop_char(ch_emb)
         ch_emb = self.conv2d(ch_emb)
         ch_emb = self.act(ch_emb)

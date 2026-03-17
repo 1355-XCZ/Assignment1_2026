@@ -343,15 +343,16 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-014: `Models/embedding.py` L31
+### BUG-014/015 ✅: `Models/embedding.py` L39
 
 | Field | Value |
 |-------|-------|
 | Stage | stage1 |
 | Severity | critical |
 | Category | embedding |
-| Assignment | Stage I - Task 3: Model Architecture |
+| Assignment | Stage I - Task 3: Model Architecture; Stage I - Task 7: Embedding |
 | Confidence | ? |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] (chief) |
 
 **Symptom**: Embedding.forward crashes with a Conv2d channel mismatch: ch_emb has char_limit (16) channels in dim 1 but Conv2d expects d_char (64) channels.
@@ -360,28 +361,11 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Fix**: Change `ch_emb.permute(0, 2, 1, 3)` to `ch_emb.permute(0, 3, 1, 2)`.
 
+**BUG Impact (if not fixed)**: Conv2d receives `char_len` as channel dimension instead of `d_char`, causing channel/group shape mismatch and immediate runtime failure in the embedding path.
+
+**FIX Impact (after fixed)**: Character embeddings are permuted to `[B, d_char, L, char_len]` as required by Conv2d, so the embedding module becomes shape-consistent and training can proceed to later stages.
+
 **Why Missed by Teams**: Teams focused on the Highway.forward transpose bug (BUG-015/016) in the same file but overlooked the separate permute in Embedding.forward. The misleading inline comment ('# [B, d_char, L, char_len]') made the line look correct at a glance. Additionally, earlier crash bugs (BUG-022 swapped embeddings, BUG-017 PosEncoder) prevent execution from reaching this point.
-
----
-
-### BUG-015: `Models/embedding.py` L31
-
-| Field | Value |
-|-------|-------|
-| Stage | stage1 |
-| Severity | critical |
-| Category | embedding |
-| Assignment | Stage I - Task 7: Embedding |
-| Confidence | ? |
-| Discovered by | claude-opus-4-6[think:adaptive] (chief) |
-
-**Symptom**: Conv2d in Embedding.forward receives a tensor with char_limit (16) channels instead of d_char (64) channels, causing a shape-mismatch crash in the depthwise-separable convolution.
-
-**Root Cause**: ch_emb.permute(0, 2, 1, 3) on input [B, L, char_limit, d_char] produces [B, char_limit, L, d_char], but Conv2d (with in_channels=d_char=64) expects [B, d_char, L, char_limit]. The permute swaps the wrong pair of dimensions.
-
-**Fix**: Change `ch_emb.permute(0, 2, 1, 3)` to `ch_emb.permute(0, 3, 1, 2)` to produce [B, d_char, L, char_limit].
-
-**Why Missed by Teams**: Teams focused on the Highway transpose bug (BUG-015/016) in the same file and likely trusted the misleading code comment '# [B, d_char, L, char_len]' which states the desired (but not actual) output shape. Verifying the actual permutation output requires tracing 4D tensor shapes across qanet.py → embedding.py → conv.py, a cross-file analysis that subset-viewing teams could not perform. Additionally, BUG-022 (embedding lookup swap) causes an earlier crash that masks this bug in end-to-end testing.
 
 ---
 
