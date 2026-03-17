@@ -872,6 +872,35 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-052 ✅ (Ambiguous Priority): `Optimizers/adam.py` L53
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but currently causes Stage I loss instability/NaN risk) |
+| Severity | major |
+| Category | optimizer (Adam path, not lr_scheduler) |
+| Assignment | Stage II - Task 1: Optimizer |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
+
+**Symptom**: Under `optimizer_name="adam"` with non-zero weight decay, training loss can become unstable and may show abnormal growth/NaN-prone behavior.
+
+**Root Cause**: Weight decay was applied with the wrong sign (`grad - wd * p`), which anti-regularizes parameters instead of penalizing large weights.
+
+**Fix**: Apply weight decay with a positive sign in the gradient path:
+- `grad = grad.add(p, alpha=wd)`
+
+**BUG Impact (if not fixed)**: The optimizer pushes weights away from zero under decay, increasing parameter magnitudes and amplifying instability risk in Adam updates.
+
+**FIX Impact (after fixed)**: Weight decay contributes as intended (`+ wd * p`), restoring regularization behavior and improving update stability in Adam training.
+
+**Chief Reasoning**:
+- *chief_a*: `grad.add(p, alpha=-wd)` is anti-regularization; correct L2 contribution is positive `+wd`.
+- *chief_b*: Wrong decay sign can enlarge weights and destabilize optimization; switching to `alpha=wd` restores expected regularization dynamics.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -1122,29 +1151,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Duplicate of BUG-037. Same attention output overwritten by residual.
 - *chief_b*: Duplicate of BUG-037. Same attention residual overwrite: `out = res` discards self-attention output.
-
-### BUG-052: `Optimizers/adam.py` L53
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | optimizer |
-| Assignment | Stage II - Task 1: Optimizer |
-| Confidence | high |
-| Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
-
-**Symptom**: If weight_decay > 0, the optimizer pushes parameters away from zero instead of regularizing them toward zero.
-
-**Root Cause**: The L2 term is added with alpha=-wd, forming grad - wd * p instead of grad + wd * p.
-
-**Fix**: Add the weight-decay contribution with a positive sign, or implement decoupled decay separately.
-
-**Chief Reasoning**:
-- *chief_a*: Optimizers/adam.py line 53: `grad = grad.add(p, alpha=-wd)` computes grad - wd*p. L2 regularization requires grad + wd*p. The negative sign pushes weights away from zero (anti-regularization). Fix: alpha=wd (positive).
-- *chief_b*: Optimizers/adam.py line 53: `grad = grad.add(p, alpha=-wd)` computes grad - wd*p. L2 regularization requires grad + wd*p (pushing parameters toward zero). The negative sign pushes parameters away from zero. Fix: alpha=wd (positive).
-
----
 
 ### BUG-054: `Optimizers/sgd.py` L38
 
