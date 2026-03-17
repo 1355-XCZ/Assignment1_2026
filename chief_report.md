@@ -635,6 +635,34 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-048 ✅: `Models/dropout.py` L17
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but currently causes Stage I loss NaN) |
+| Severity | major |
+| Category | regularization |
+| Assignment | Stage II - Task 4: Regularization |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] |
+
+**Symptom**: Activations are scaled incorrectly during training, altering the expected value and leading to poor convergence or exploding gradients.
+
+**Root Cause**: Inverted dropout scales surviving elements by `1 / p` instead of `1 / (1 - p)`.
+
+**Fix**: Change the scaling factor to divide by `(1.0 - self.p)`.
+
+**BUG Impact (if not fixed)**: Surviving activations are over-amplified (e.g., 10x when `p=0.1`), which can rapidly destabilize optimization and drive training loss to `NaN`, blocking Stage I trainability requirements.
+
+**FIX Impact (after fixed)**: Dropout now preserves expected activation scale via `1/(1-p)`, improving numerical stability and removing this direct activation-scaling route to `NaN`.
+
+**Chief Reasoning**:
+- *chief_a*: Models/dropout.py line 15: `return x * mask / self.p`. Inverted dropout should scale by 1/(1-p) to preserve expected value. With p=0.1, correct scale is ~1.11 but code uses 1/0.1=10, amplifying surviving activations 10x. Fix: divide by (1.0 - self.p).
+- *chief_b*: Models/dropout.py line 15: `return x * mask / self.p`. Inverted dropout should scale by 1/(1-p). With p=0.1, surviving elements are scaled by 10x instead of ~1.11x, causing activations to explode. Fix: divide by `(1.0 - self.p)`.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -950,29 +978,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Duplicate of BUG-012.
 - *chief_b*: Duplicate of BUG-012.
-
----
-
-### BUG-048: `Models/dropout.py` L15
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | regularization |
-| Assignment | Stage II - Task 4: Regularization |
-| Confidence | high |
-| Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] |
-
-**Symptom**: Activations are scaled incorrectly during training, altering the expected value and leading to poor convergence or exploding gradients.
-
-**Root Cause**: Inverted dropout scales surviving elements by `1 / p` instead of `1 / (1 - p)`.
-
-**Fix**: Change the scaling factor to divide by `(1.0 - self.p)`.
-
-**Chief Reasoning**:
-- *chief_a*: Models/dropout.py line 15: `return x * mask / self.p`. Inverted dropout should scale by 1/(1-p) to preserve expected value. With p=0.1, correct scale is ~1.11 but code uses 1/0.1=10, amplifying surviving activations 10x. Fix: divide by (1.0 - self.p).
-- *chief_b*: Models/dropout.py line 15: `return x * mask / self.p`. Inverted dropout should scale by 1/(1-p). With p=0.1, surviving elements are scaled by 10x instead of ~1.11x, causing activations to explode. Fix: divide by `(1.0 - self.p)`.
 
 ---
 
