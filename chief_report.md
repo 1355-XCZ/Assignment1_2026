@@ -505,7 +505,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-021: `Models/qanet.py` L63
+### BUG-021 ✅: `Models/qanet.py` L65
 
 | Field | Value |
 |-------|-------|
@@ -514,6 +514,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | embedding |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: Context embedding lookup can raise index errors on the char table, and even when indices are in range the context char/word tensors reach Embedding with swapped feature dimensions.
@@ -521,6 +522,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: Context word ids and char ids are looked up in the wrong embedding tables: Cwid goes through self.char_emb and Ccid goes through self.word_emb.
 
 **Fix**: Use self.word_emb(Cwid) for context words and self.char_emb(Ccid) for context chars before calling self.emb.
+
+**BUG Impact (if not fixed)**: The model can crash with embedding index errors when word IDs are sent to the char embedding table; even in non-crashing cases, context features are semantically corrupted by swapped word/char channels, degrading downstream attention and span prediction.
+
+**FIX Impact (after fixed)**: Context and question inputs now use the correct embedding tables (word IDs -> word embeddings, char IDs -> char embeddings), restoring valid feature semantics and enabling stable forward training/evaluation behavior.
 
 **Chief Reasoning**:
 - *chief_a*: Models/qanet.py line 63: `Cw, Cc = self.char_emb(Cwid), self.word_emb(Ccid)`. Cwid contains word indices (up to ~50k), char_emb has vocab ~200 → IndexError. Even if sizes matched, the semantics are completely wrong (word IDs looked up in char table). Fix: Cw=self.word_emb(Cwid), Cc=self.char_emb(Ccid).
