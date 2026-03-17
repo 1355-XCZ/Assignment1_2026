@@ -719,6 +719,34 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-044 ✅: `Models/Normalizations/layernorm.py` L41
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but currently causes Stage I loss NaN) |
+| Severity | major |
+| Category | normalization |
+| Assignment | Stage II - Task 4: Regularization |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] |
+
+**Symptom**: LayerNorm applies the affine transformation incorrectly, multiplying by bias and adding weight.
+
+**Root Cause**: The formula uses x_norm * self.bias + self.weight instead of x_norm * self.weight + self.bias.
+
+**Fix**: Change to x_norm * self.weight + self.bias.
+
+**BUG Impact (if not fixed)**: LayerNorm applies scale/shift with swapped semantics, distorting normalized activations and contributing to unstable optimization that can propagate toward NaN behavior in deep stacked blocks.
+
+**FIX Impact (after fixed)**: Affine normalization now follows the standard form (`gamma * x_norm + beta`), restoring correct feature scaling and improving numerical stability during training.
+
+**Chief Reasoning**:
+- *chief_a*: Models/Normalizations/layernorm.py line 40: `return x_norm * self.bias + self.weight`. The affine transform is swapped: weight (scale) is used as additive and bias (shift) as multiplicative. Correct: `x_norm * self.weight + self.bias`.
+- *chief_b*: Models/Normalizations/layernorm.py line 40: `x_norm * self.bias + self.weight`. Affine transform should be `x_norm * self.weight + self.bias`. Weight (gamma) scales, bias (beta) shifts. Swapping them makes the scale additive and the shift multiplicative, breaking normalization semantics.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -896,29 +924,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Models/Initializations/xavier.py line 19: `std = gain * math.sqrt(2.0 / (fan_in * fan_out))`. Glorot (2010) uses fan_in + fan_out in the denominator, not fan_in * fan_out. This dramatically reduces the scale for typical layer sizes. Note: xavier_uniform_ at line 30 has the identical bug.
 - *chief_b*: Models/Initializations/xavier.py line 19: `math.sqrt(2.0 / (fan_in * fan_out))` should be `math.sqrt(2.0 / (fan_in + fan_out))`. Product instead of sum drastically underestimates the correct std for layers with many units. NOTE: xavier_uniform_ (line ~30) has the exact same bug but was not explicitly called out — both must be fixed.
-
----
-
-### BUG-044: `Models/Normalizations/layernorm.py` L40
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | normalization |
-| Assignment | Stage II - Task 4: Regularization |
-| Confidence | high |
-| Discovered by | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] |
-
-**Symptom**: LayerNorm applies the affine transformation incorrectly, multiplying by bias and adding weight.
-
-**Root Cause**: The formula uses x_norm * self.bias + self.weight instead of x_norm * self.weight + self.bias.
-
-**Fix**: Change to x_norm * self.weight + self.bias.
-
-**Chief Reasoning**:
-- *chief_a*: Models/Normalizations/layernorm.py line 40: `return x_norm * self.bias + self.weight`. The affine transform is swapped: weight (scale) is used as additive and bias (shift) as multiplicative. Correct: `x_norm * self.weight + self.bias`.
-- *chief_b*: Models/Normalizations/layernorm.py line 40: `x_norm * self.bias + self.weight`. Affine transform should be `x_norm * self.weight + self.bias`. Weight (gamma) scales, bias (beta) shifts. Swapping them makes the scale additive and the shift multiplicative, breaking normalization semantics.
 
 ---
 

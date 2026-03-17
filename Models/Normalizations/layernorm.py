@@ -38,4 +38,4 @@ class LayerNorm(nn.Module):
         var = x.var(dim=dims, keepdim=True, unbiased=False)
 
         x_norm = (x - mean) / torch.sqrt(var + self.eps)
-        return x_norm * self.bias + self.weight
+        return x_norm * self.weight + self.bias
