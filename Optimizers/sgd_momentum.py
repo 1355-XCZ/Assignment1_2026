@@ -51,7 +51,7 @@ class SGDMomentum(Optimizer):
                 v = state["velocity"]
 
                 # v = momentum * v + grad
-                v.mul_(mu).sub_(grad)
+                v.mul_(mu).add_(grad)
 
                 p.add_(v, alpha=-lr)
 

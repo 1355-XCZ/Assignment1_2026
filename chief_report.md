@@ -624,7 +624,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Status | ✅ Fixed |
 | Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
 
-**Symptom**: The lambda output is added to the base learning rate, so a factor of 1.0 increases lr by 1 instead of leaving it unchanged.
+**Symptom**: The lambda output is added to the base learning rate, so a factor of 1.0 increases lr by 1 instead of leaving it unchanged; in practice this causes abnormal loss growth/NaN under the affected scheduler paths.
 
 **Root Cause**: The scheduler uses addition instead of multiplication when applying lr_lambda(t).
 
@@ -777,6 +777,34 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: TrainTools/train_utils.py line 31: `optimizer.step()` precedes `clip_grad_norm_()`. Parameters are updated with unclipped gradients; the subsequent clipping has no effect. Must be: backward → clip → step. Note: currently masked by BUG-032 (loss.item().backward() crash).
 - *chief_b*: TrainTools/train_utils.py lines 31-32: `optimizer.step()` is called BEFORE `clip_grad_norm_()`. Gradients are applied unclipped, then clipping happens after the update (which is pointless). Fix: move clip_grad_norm_ before optimizer.step(). (Note: line 30's loss.item().backward() bug (BUG-032) prevents reaching this code, but once fixed this ordering bug manifests.)
+
+---
+
+### BUG-055 ✅ (Ambiguous Priority): `Optimizers/sgd_momentum.py` L54
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but can cause Stage I training divergence in current runs) |
+| Severity | major |
+| Category | optimizer |
+| Assignment | Stage II - Task 1: Optimizer |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
+
+**Symptom**: When `optimizer_name="sgd_momentum"` is enabled, loss may increase rapidly (or become unstable) instead of decreasing, consistent with an optimizer-direction bug.
+
+**Root Cause**: The momentum buffer update used subtraction (`v.mul_(mu).sub_(grad)`), which can invert the effective optimization direction under `p -= lr * v`. The intended rule is additive momentum: `v = mu * v + grad`.
+
+**Fix**: Changed momentum update from `v.mul_(mu).sub_(grad)` to `v.mul_(mu).add_(grad)`.
+
+**BUG Impact (if not fixed)**: `sgd_momentum` can push parameters in a harmful direction, causing divergence and unstable training even when the Stage I pipeline is otherwise runnable.
+
+**FIX Impact (after fixed)**: Momentum direction is aligned with gradient descent semantics, restoring stable `sgd_momentum` behavior and reducing divergence risk in practical training runs.
+
+**Chief Reasoning**:
+- *chief_a*: Optimizers/sgd_momentum.py line 47: `v.mul_(mu).sub_(grad)` computes v = mu*v - grad. Then p.add_(v, alpha=-lr) gives p + lr*grad (gradient ascent). The docstring says v = mu*v + grad. Fix: change .sub_ to .add_.
+- *chief_b*: Optimizers/sgd_momentum.py line 47: `v.mul_(mu).sub_(grad)` computes v = mu*v - grad. Docstring says v = mu*v + grad. With `p.add_(v, alpha=-lr)`, using sub_ makes p += lr*grad (gradient ascent). Fix: `.add_(grad)` instead of `.sub_(grad)`.
 
 ---
 
@@ -1139,29 +1167,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Optimizers/sgd.py line 38: `grad = grad.add(p, alpha=-wd)` gives grad - wd*p. Then p.add_(grad, alpha=-lr) gives p - lr*(grad-wd*p) = p - lr*grad + lr*wd*p. The +lr*wd*p term increases weight magnitude — negative regularization. Fix: alpha=wd.
 - *chief_b*: Optimizers/sgd.py line 38: `grad = grad.add(p, alpha=-wd)` computes grad - wd*p. Same as BUG-053: L2 regularization needs positive alpha. Fix: alpha=wd.
-
----
-
-### BUG-055: `Optimizers/sgd_momentum.py` L47
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | optimizer |
-| Assignment | Stage II - Task 1: Optimizer |
-| Confidence | high |
-| Discovered by | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
-
-**Symptom**: Momentum update subtracts the gradient instead of adding it, reversing the effective gradient direction
-
-**Root Cause**: v.mul_(mu).sub_(grad) computes v = mu*v - grad; the documented rule and correct formula is v = mu*v + grad
-
-**Fix**: Change v.mul_(mu).sub_(grad) to v.mul_(mu).add_(grad)
-
-**Chief Reasoning**:
-- *chief_a*: Optimizers/sgd_momentum.py line 47: `v.mul_(mu).sub_(grad)` computes v = mu*v - grad. Then p.add_(v, alpha=-lr) gives p + lr*grad (gradient ascent). The docstring says v = mu*v + grad. Fix: change .sub_ to .add_.
-- *chief_b*: Optimizers/sgd_momentum.py line 47: `v.mul_(mu).sub_(grad)` computes v = mu*v - grad. Docstring says v = mu*v + grad. With the subsequent `p.add_(v, alpha=-lr)`, i.e., p -= lr*v, using sub_ makes p += lr*grad (gradient ascent via the subtracted gradient). Fix: `.add_(grad)` instead of `.sub_(grad)`.
 
 ---
 
