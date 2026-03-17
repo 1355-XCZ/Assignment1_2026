@@ -691,6 +691,34 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-035 ✅: `Models/Activations/leakeyReLU.py` L19
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but currently causes Stage I loss NaN) |
+| Severity | critical |
+| Category | activation |
+| Assignment | Stage II - Task 6: Activation |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
+
+**Symptom**: Positive inputs are scaled by negative_slope and negative inputs pass through unscaled – the exact inverse of LeakyReLU
+
+**Root Cause**: torch.where(x < 0, x, self.negative_slope * x) returns x when condition is True (x<0) and scaled x when False (x>=0); the two value arguments are swapped
+
+**Fix**: Change to torch.where(x < 0, self.negative_slope * x, x)
+
+**BUG Impact (if not fixed)**: Activation dynamics are inverted (positives damped, negatives preserved), which distorts feature magnitudes across layers and can contribute to unstable optimization and NaN-prone training behavior.
+
+**FIX Impact (after fixed)**: LeakyReLU now applies the negative slope only on negative inputs, restoring expected activation behavior and improving numerical stability in forward/backward propagation.
+
+**Chief Reasoning**:
+- *chief_a*: Models/Activations/leakeyReLU.py line 19: `torch.where(x < 0, x, self.negative_slope * x)`. When x<0 (True), returns x unscaled; when x≥0 (False), returns negative_slope*x. This inverts LeakyReLU: positives are attenuated, negatives pass through. Fix: swap the two value arguments.
+- *chief_b*: Models/Activations/leakeyReLU.py line 19: `torch.where(x < 0, x, self.negative_slope * x)`. torch.where(cond, val_if_true, val_if_false): when x<0 returns x (unscaled), when x≥0 returns slope*x (scaled). This is inverted — positive values get damped, negatives pass through. Fix: swap the two value arguments.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -711,29 +739,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: EvaluateTools/eval_utils.py line 100: `torch.argmax(p1, dim=0)` on p1=[B,seq_len] reduces over batch dim, yielding [seq_len] instead of [B]. Downstream code expects per-example predictions. Fix: dim=1. Classified as Stage II because evaluation can technically run (argmax still produces a tensor), but answers are completely wrong.
 - *chief_b*: EvaluateTools/eval_utils.py line ~100: `torch.argmax(p1, dim=0)` reduces over batch dim (0) instead of sequence dim (1). p1/p2 are [B, seq_len], so dim=0 produces [seq_len] instead of [B]. All predicted spans are wrong and subsequent shape operations fail. Fix: dim=1.
-
----
-
-### BUG-035: `Models/Activations/leakeyReLU.py` L19
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | critical |
-| Category | activation |
-| Assignment | Stage II - Task 6: Activation |
-| Confidence | high |
-| Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
-
-**Symptom**: Positive inputs are scaled by negative_slope and negative inputs pass through unscaled – the exact inverse of LeakyReLU
-
-**Root Cause**: torch.where(x < 0, x, self.negative_slope * x) returns x when condition is True (x<0) and scaled x when False (x>=0); the two value arguments are swapped
-
-**Fix**: Change to torch.where(x < 0, self.negative_slope * x, x)
-
-**Chief Reasoning**:
-- *chief_a*: Models/Activations/leakeyReLU.py line 19: `torch.where(x < 0, x, self.negative_slope * x)`. When x<0 (True), returns x unscaled; when x≥0 (False), returns negative_slope*x. This inverts LeakyReLU: positives are attenuated, negatives pass through. Fix: swap the two value arguments.
-- *chief_b*: Models/Activations/leakeyReLU.py line 19: `torch.where(x < 0, x, self.negative_slope * x)`. torch.where(cond, val_if_true, val_if_false): when x<0 returns x (unscaled), when x≥0 returns slope*x (scaled). This is inverted — positive values get damped, negatives pass through. Fix: swap the two value arguments.
 
 ---
 
