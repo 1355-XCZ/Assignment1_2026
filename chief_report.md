@@ -1863,12 +1863,15 @@ Two components were modified:
 2. **`Schedulers/scheduler.py`**: Replace the constant-factor `lambda_scheduler` with a non-trivial warmup implementation, e.g. logarithmic warmup:
    `factor = (1/log(warmup)) × log(step+1)` during warmup, then `factor = 1.0` afterward. Recommended default warmup period: 1000 steps.
 
+   **Engineering constraint (checkpoint compatibility)**: The warmup callable must be serializable (picklable) for checkpoint save/load flows. Use a top-level callable object/function (e.g., a module-level class implementing `__call__`) instead of a local closure.
+
    *Why*: Warmup reduces early-step instability when gradients are still volatile in randomly initialized models, improving the probability of stable convergence.
 
 **BUG Impact (if not fixed)**: The default training configuration (`optimizer_name="adam"`, `scheduler_name="lambda"`) produces lr=1.0, causing immediate loss explosion. Users must manually override to SGD + none to achieve any training, which defeats the purpose of providing Adam as the default optimizer.
 
 **FIX Impact (after fixed)**: The default configuration can produce a stable training curve (warmup to target lr, then steady updates) instead of immediate loss explosion. Optimizer–scheduler interaction becomes explicit and consistent with assignment expectations for functional and trainable pipelines.
 
-**Review Result**: ✅ The two architectural changes were verified in code:
+**Review Result**: ✅ The architectural fix set was verified in code:
 - `Optimizers/optimizer.py`: Adam now uses `lr=args.learning_rate`.
 - `Schedulers/scheduler.py`: `lambda_scheduler` now uses a warmup function instead of a constant 1.0 factor.
+- `Schedulers/scheduler.py`: warmup is implemented via a top-level callable (`_WarmupFactor`), which is checkpoint-serialization safe.

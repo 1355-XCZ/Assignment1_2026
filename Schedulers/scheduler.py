@@ -29,19 +29,22 @@ def _constant_factor(_step):
     return 1.0
 
 
-def _make_warmup_fn(warmup_steps):
-    cr = 1.0 / math.log(warmup_steps)
-    def lr_lambda(step):
-        if step < warmup_steps:
-            return cr * math.log(step + 1)
+class _WarmupFactor:
+    """Logarithmic warmup following the QANet paper recipe. Picklable."""
+    def __init__(self, warmup_steps):
+        self.warmup_steps = warmup_steps
+        self.cr = 1.0 / math.log(warmup_steps)
+
+    def __call__(self, step):
+        if step < self.warmup_steps:
+            return self.cr * math.log(step + 1)
         return 1.0
-    return lr_lambda
 
 
 def lambda_scheduler(optimizer, args):
     """LambdaLR with logarithmic warmup following the QANet paper recipe."""
     warmup = getattr(args, "lr_warm_up_num", 1000)
-    return LambdaLR(optimizer, lr_lambda=_make_warmup_fn(warmup))
+    return LambdaLR(optimizer, lr_lambda=_WarmupFactor(warmup))
 
 
 def none_scheduler(optimizer, args):
