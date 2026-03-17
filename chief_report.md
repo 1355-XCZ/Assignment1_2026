@@ -141,7 +141,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-005: `Models/attention.py` L31
+### BUG-005 ✅: `Models/attention.py` L38
 
 | Field | Value |
 |-------|-------|
@@ -150,6 +150,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | attention |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: RuntimeError: size mismatch for batched matrix multiplication (bmm).
@@ -157,6 +158,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: The arguments to torch.bmm are in the wrong order. Q has shape [B, Lq, C] and S1 has shape [B, Lc, Lq], so Q x S1 is an invalid matrix multiplication.
 
 **Fix**: Change the order of arguments to torch.bmm(S1, Q).
+
+**BUG Impact (if not fixed)**: Context-query attention fails at runtime due to invalid batched matrix multiplication dimensions, so the model cannot build fused attention features and training halts.
+
+**FIX Impact (after fixed)**: Batched matrix multiplication dimensions now align (`[B, Lc, Lq] @ [B, Lq, C] -> [B, Lc, C]`), allowing CQ attention to compute valid aligned representations and continue forward execution.
 
 **Chief Reasoning**:
 - *chief_a*: Models/attention.py line 31: `A = torch.bmm(Q, S1)`. Q=[B,Lq,C], S1=[B,Lc,Lq]. bmm requires inner dims to match: Q's last dim C ≠ S1's second dim Lc. Correct: `A = torch.bmm(S1, Q)` giving [B,Lc,Lq]@[B,Lq,C]=[B,Lc,C].
