@@ -663,6 +663,34 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-036 ✅: `Models/Activations/relu.py` L12
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but currently causes Stage I loss NaN) |
+| Severity | critical |
+| Category | activation |
+| Assignment | Stage II - Task 6: Activation |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
+
+**Symptom**: ReLU zeros out all positive values and keeps negatives, producing the opposite of ReLU
+
+**Root Cause**: x.clamp(max=0.0) clamps values to be at most 0; correct ReLU requires x.clamp(min=0.0)
+
+**Fix**: Change x.clamp(max=0.0) to x.clamp(min=0.0)
+
+**BUG Impact (if not fixed)**: Positive activations are suppressed while negative values pass through, distorting feature flow and potentially destabilizing optimization toward non-convergent/NaN behavior under stacked nonlinear blocks.
+
+**FIX Impact (after fixed)**: ReLU restores the correct nonlinearity (`max(0, x)`), preserving positive signal propagation and improving training stability under the standard recipe.
+
+**Chief Reasoning**:
+- *chief_a*: Models/Activations/relu.py line 12: `x.clamp(max=0.0)` caps all values at 0, keeping negatives and zeroing positives — the exact opposite of ReLU. Fix: x.clamp(min=0.0).
+- *chief_b*: Models/Activations/relu.py line 12: `x.clamp(max=0.0)` clamps all values to ≤0, zeroing positives and keeping negatives — the exact opposite of ReLU. Fix: `x.clamp(min=0.0)`.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -706,29 +734,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Models/Activations/leakeyReLU.py line 19: `torch.where(x < 0, x, self.negative_slope * x)`. When x<0 (True), returns x unscaled; when x≥0 (False), returns negative_slope*x. This inverts LeakyReLU: positives are attenuated, negatives pass through. Fix: swap the two value arguments.
 - *chief_b*: Models/Activations/leakeyReLU.py line 19: `torch.where(x < 0, x, self.negative_slope * x)`. torch.where(cond, val_if_true, val_if_false): when x<0 returns x (unscaled), when x≥0 returns slope*x (scaled). This is inverted — positive values get damped, negatives pass through. Fix: swap the two value arguments.
-
----
-
-### BUG-036: `Models/Activations/relu.py` L12
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | critical |
-| Category | activation |
-| Assignment | Stage II - Task 6: Activation |
-| Confidence | high |
-| Discovered by | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
-
-**Symptom**: ReLU zeros out all positive values and keeps negatives, producing the opposite of ReLU
-
-**Root Cause**: x.clamp(max=0.0) clamps values to be at most 0; correct ReLU requires x.clamp(min=0.0)
-
-**Fix**: Change x.clamp(max=0.0) to x.clamp(min=0.0)
-
-**Chief Reasoning**:
-- *chief_a*: Models/Activations/relu.py line 12: `x.clamp(max=0.0)` caps all values at 0, keeping negatives and zeroing positives — the exact opposite of ReLU. Fix: x.clamp(min=0.0).
-- *chief_b*: Models/Activations/relu.py line 12: `x.clamp(max=0.0)` clamps all values to ≤0, zeroing positives and keeping negatives — the exact opposite of ReLU. Fix: `x.clamp(min=0.0)`.
 
 ---
 
