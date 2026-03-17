@@ -593,7 +593,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Root Cause**: The scheduler module did not provide a valid no-op scheduler factory for the `"none"` option in a way that `train.py` could reliably resolve and use, so scheduler selection failed for the notebook's vanilla configuration.
 
-**Fix**: Defined a `none_scheduler(optimizer, args)` factory function that returns a `LambdaLR` with `lr_lambda=lambda _: 1.0` (constant learning rate, no scheduling).
+**Fix**: Defined a top-level `_constant_factor` function and used it in `none_scheduler(optimizer, args)` via `LambdaLR(..., lr_lambda=_constant_factor)`, so the `"none"` scheduler remains no-op while avoiding lambda serialization issues in checkpoint workflows.
 
 **BUG Impact (if not fixed)**: Training cannot proceed with the default notebook configuration (`scheduler_name="none"`). The run fails before optimizer/scheduler setup and before entering the training loop.
 
