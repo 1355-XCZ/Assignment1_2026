@@ -1781,3 +1781,36 @@ These were flagged by audit teams but both chief engineers agreed they are false
 | Stage I - Task 7: Embedding | 1 |
 | Stage II - Task 9: Optimizer | 1 |
 | Stage II - Task 7: Embedding | 1 |
+
+---
+
+## H Issues (Reasonableness / Grading Notes)
+
+These `H-` items are not strict code-defect entries. They are used to document design-reasonableness issues and edge-case constraints introduced by assignment wording, grading criteria, and practical evaluation limits (including ambiguous "standard configuration" expectations). The goal is to keep a clear record of contentious but non-binary decisions that may affect scoring interpretation.
+
+### H001: `Adam + none` test fails — does this cause Stage I deduction?
+
+| Field | Value |
+|-------|-------|
+| Type | grading_reasonableness_note |
+| Scope | training configuration validity |
+| Score Impact Stage | stage1&2 |
+| Related Components | `Optimizers/optimizer.py` (adam factory), `Schedulers/scheduler.py` (none/lambda), notebook training arguments |
+| Decision | Usually **No direct deduction** by itself, if at least one standard configuration is functionally correct and empirically trainable |
+| Confidence | medium |
+
+**Question**: If `optimizer_name="adam"` with `scheduler_name="none"` shows unstable/abnormal loss, does this alone mean Stage I fails?
+
+**Answer (Chief Decision)**:
+- Not necessarily. Stage I focuses on whether the pipeline is functionally correct and empirically trainable under a reasonable standard configuration.
+- A single non-standard or poorly matched optimizer/scheduler combination failing does not automatically imply Stage I failure.
+- Practical grading risk appears when no reasonable configuration can train stably, or when the chosen default path is internally inconsistent with documented design intent.
+
+**Reasoning**:
+- In this repo, Adam-related mechanism bugs were fixed, but run behavior still depends strongly on the effective LR path.
+- `Adam + none` can be unstable if effective LR is too large for this setup.
+- `SGD + none` has already shown stable downward training signals in prior runs, which is stronger Stage I evidence than one unstable Adam pairing.
+
+**Recommended Evidence for Submission**:
+- Keep one successful "standard" run log (loss decreases, no crash/NaN, metrics show non-random signal).
+- Treat unstable `Adam + none` as a configuration-compatibility note unless assignment explicitly requires all optimizer/scheduler pairs to pass.
