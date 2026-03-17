@@ -72,7 +72,7 @@ class QANet(nn.Module):
         Ce = self.c_emb_enc(C, cmask)
         Qe = self.q_emb_enc(Q, qmask)
 
-        X = self.cq_att(Ce, Qe, qmask, cmask)
+        X = self.cq_att(Ce, Qe, cmask, qmask)
 
         M1 = self.cq_resizer(X)
         for enc in self.model_enc_blks:

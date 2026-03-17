@@ -19,8 +19,8 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Confirmed bugs | 74 |
 | Rejected (false positives) | 1 |
 | Newly discovered by chiefs | 6 |
-| Stage I bugs | 33 |
-| Stage II bugs | 41 |
+| Stage I bugs | 34 |
+| Stage II bugs | 40 |
 | Must-fix | 52 |
 | Should-fix | 18 |
 | Nice-to-fix | 3 |
@@ -38,7 +38,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 ### Chief B
 **Well-covered areas:** Optimizers (adam, sgd, sgd_momentum — key mismatches, weight decay signs, second moment all caught), LR schedulers (all three scheduler bugs caught), Conv layers (unfold dim, padding height, depthwise-separable order), encoder normalization indexing and attention-residual discard, loss function argument swap, training loop (Namespace, loss.item().backward, gradient clip ordering), activation functions, initialization formulas, and preprocessing answer-index inconsistencies.
 
-**Under-examined areas:** (1) Embedding.forward `ch_emb.permute(0, 2, 1, 3)` — a cross-file shape-flow bug requiring tracing from qanet.py through embedding.py into conv.py's Conv2d, missed because teams focused on the Highway transpose bug in the same file and may have trusted the misleading code comment. (2) Adam bias-correction formula (`beta * t` vs `beta ** t`) — teams found the key mismatch and second-moment bugs but overlooked this subtle arithmetic error that looks plausible at first glance. (3) The CQ-attention mask swap (BUG-052) was correctly identified as a bug but misclassified as Stage-II; it actually causes a Stage-I crash because `para_limit ≠ ques_limit` makes the mask non-broadcastable. (4) Xavier uniform initialization shares the same `fan_in * fan_out` bug as xavier normal but was not explicitly called out. (5) The interaction between multiple co-occurring bugs (e.g., BUG-022 masking the embedding permute bug) was not analyzed by any team.
+**Under-examined areas:** (1) Embedding.forward `ch_emb.permute(0, 2, 1, 3)` — a cross-file shape-flow bug requiring tracing from qanet.py through embedding.py into conv.py's Conv2d, missed because teams focused on the Highway transpose bug in the same file and may have trusted the misleading code comment. (2) Adam bias-correction formula (`beta * t` vs `beta ** t`) — teams found the key mismatch and second-moment bugs but overlooked this subtle arithmetic error that looks plausible at first glance. (3) The CQ-attention mask swap (BUG-051) was correctly identified as a bug but misclassified as Stage-II; it actually causes a Stage-I crash because `para_limit ≠ ques_limit` makes the mask non-broadcastable. (4) Xavier uniform initialization shares the same `fan_in * fan_out` bug as xavier normal but was not explicitly called out. (5) The interaction between multiple co-occurring bugs (e.g., BUG-022 masking the embedding permute bug) was not analyzed by any team.
 
 ---
 
@@ -529,6 +529,34 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-051 ✅: `Models/qanet.py` L80
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | major |
+| Category | attention |
+| Assignment | Stage I - Task 3: Model Architecture |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | claude-opus-4-6[think:adaptive,budget:16000] |
+
+**Symptom**: Context-query attention uses the wrong masks: context PAD tokens are treated as query PADs and vice versa, producing incorrect attention weights. Under standard limits (`para_limit=400`, `ques_limit=50`), this also causes a runtime shape mismatch.
+
+**Root Cause**: Mask arguments are swapped in `self.cq_att(Ce, Qe, qmask, cmask)` — the CQAttention signature expects `(C, Q, cmask, qmask)`.
+
+**Fix**: Change to `self.cq_att(Ce, Qe, cmask, qmask)`.
+
+**BUG Impact (if not fixed)**: Context-query attention applies mismatched masks; under the standard setting (`para_limit=400`, `ques_limit=50`), mask broadcasting becomes non-compatible and raises a runtime error, blocking training/evaluation before stable learning can begin.
+
+**FIX Impact (after fixed)**: CQ-attention receives correctly aligned context/query masks, removing the shape-mismatch crash path and restoring valid masked-attention computation for the Stage I executable pipeline.
+
+**Chief Reasoning**:
+- *chief_a*: Models/qanet.py line 80: `self.cq_att(Ce, Qe, qmask, cmask)`. CQAttention.forward signature is (C, Q, cmask, qmask). Passing qmask as cmask and cmask as qmask swaps which positions are treated as padding. With para_limit≠ques_limit, this also causes shape mismatches in the mask broadcasting.
+- *chief_b*: Models/qanet.py line 80: `self.cq_att(Ce, Qe, qmask, cmask)` but CQAttention signature is (C, Q, cmask, qmask). This swaps the masks. Inside CQAttention, qmask_param (actually cmask [B,400]) is unsqueezed to [B,1,400] and used in mask_logits with S [B,400,50]. Broadcasting [B,400,50] with [B,1,400] fails on dim 2 (50 vs 400) → RuntimeError. This is therefore a Stage-I crash bug.
+
+---
+
 ### BUG-N001 ✅: `Schedulers/scheduler.py` L37
 
 | Field | Value |
@@ -937,31 +965,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Duplicate of BUG-037. Same attention output overwritten by residual.
 - *chief_b*: Duplicate of BUG-037. Same attention residual overwrite: `out = res` discards self-attention output.
-
----
-
-### BUG-051: `Models/qanet.py` L80
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | attention |
-| Assignment | Stage II - Task 3: Attention Mechanism |
-| Confidence | high |
-| Discovered by | claude-opus-4-6[think:adaptive,budget:16000] |
-
-**Symptom**: Context-query attention uses the wrong masks: context PAD tokens are treated as query PADs and vice versa, producing incorrect attention weights
-
-**Root Cause**: Mask arguments are swapped in `self.cq_att(Ce, Qe, qmask, cmask)` — the CQAttention signature expects `(C, Q, cmask, qmask)`
-
-**Fix**: Change to `self.cq_att(Ce, Qe, cmask, qmask)`
-
-**Chief Reasoning**:
-- *chief_a*: Models/qanet.py line 80: `self.cq_att(Ce, Qe, qmask, cmask)`. CQAttention.forward signature is (C, Q, cmask, qmask). Passing qmask as cmask and cmask as qmask swaps which positions are treated as padding. With para_limit≠ques_limit, this also causes shape mismatches in the mask broadcasting.
-- *chief_b*: Models/qanet.py line 80: `self.cq_att(Ce, Qe, qmask, cmask)` but CQAttention signature is (C, Q, cmask, qmask). This swaps the masks. Inside CQAttention, qmask_param (actually cmask [B,400]) is unsqueezed to [B,1,400] and used in mask_logits with S [B,400,50]. Broadcasting [B,400,50] with [B,1,400] fails on dim 2 (50 vs 400) → RuntimeError. NOTE: This is actually a Stage-I crash bug (not stage2 as originally classified) because para_limit≠ques_limit makes the shapes incompatible.
-
----
 
 ### BUG-052: `Optimizers/adam.py` L53
 
