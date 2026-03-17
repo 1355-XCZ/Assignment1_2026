@@ -385,7 +385,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-016: `Models/encoder.py` L26
+### BUG-016 ✅: `Models/encoder.py` L26
 
 | Field | Value |
 |-------|-------|
@@ -394,6 +394,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | shape_mismatch |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: EncoderBlock construction usually fails while building positional encodings because the frequency tensor does not broadcast against the [C, L] position grid.
@@ -401,6 +402,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: freqs is unsqueezed on dimension 0, producing shape [1, C] instead of [C, 1].
 
 **Fix**: Change freqs.unsqueeze(0) to freqs.unsqueeze(1).
+
+**BUG Impact (if not fixed)**: Positional encoding construction fails during model initialization due to a broadcast mismatch (`[C, L]` vs `[1, C]`), so training/evaluation cannot even start.
+
+**FIX Impact (after fixed)**: Frequency tensor shape becomes `[C, 1]`, broadcasting with `[C, L]` is valid, and the model can initialize and continue to the next stages of the pipeline.
 
 **Chief Reasoning**:
 - *chief_a*: Models/encoder.py line 26: `freqs.unsqueeze(0)` on [d_model] gives [1,d_model] instead of [d_model,1]. Then `pos * freqs` is [d_model,length]*[1,d_model]. Broadcasting requires dim1: length vs d_model. With defaults (96≠400), this crashes. Fix: unsqueeze(1) → [d_model,1] for correct [d_model,length]*[d_model,1] broadcast.
