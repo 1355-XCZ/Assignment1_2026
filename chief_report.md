@@ -901,6 +901,35 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-058 ✅ (Ambiguous Priority): `Schedulers/step_scheduler.py` L25
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but can cause Stage I trainability failure under affected scheduler settings) |
+| Severity | major |
+| Category | lr_scheduler (Step path) |
+| Assignment | Stage II - Task 2: LR Scheduler |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
+
+**Symptom**: Learning rate decays incorrectly (or becomes zero at startup), so optimization can stall or behave abnormally instead of following stepwise exponential decay.
+
+**Root Cause**: The formula used multiplication `gamma * n` instead of exponentiation `gamma ** n` in step scheduling.
+
+**Fix**: Use exponential decay by step count:
+- `base_lr * self.gamma ** (t // self.step_size)`
+
+**BUG Impact (if not fixed)**: At early steps, LR can collapse to zero (or follow a wrong linear pattern), preventing effective parameter updates and harming practical trainability for runs using the Step scheduler.
+
+**FIX Impact (after fixed)**: LR now follows intended staircase exponential decay (`gamma^k`), restoring expected StepLR behavior and stable optimizer progress under this scheduler path.
+
+**Chief Reasoning**:
+- *chief_a*: `base_lr * self.gamma * (t // self.step_size)` gives `lr=0` at `t=0`; correct StepLR must use exponentiation to keep `lr=base_lr` at startup.
+- *chief_b*: Multiplication-by-step-index creates linear/degenerate decay behavior; replacing with `**` restores canonical stepwise schedule semantics.
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -1195,29 +1224,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Schedulers/cosine_scheduler.py line 25: formula is `eta_min + (base_lr - eta_min) * (1 + cos(...))`. Missing the 0.5 factor. At t=0: lr = eta_min + 2*(base_lr-eta_min) = 2*base_lr - eta_min, which is ~2x the intended initial lr. Correct: `eta_min + 0.5 * (base_lr - eta_min) * (1 + cos(...))`.
 - *chief_b*: Schedulers/cosine_scheduler.py line 25: formula is `eta_min + (base_lr - eta_min) * (1 + cos(...))`. Missing the 0.5 factor. At t=0, cos(0)=1, so lr = eta_min + 2*(base_lr - eta_min) = 2*base_lr - eta_min, which exceeds the initial lr. Correct: `0.5 * (base_lr - eta_min) * (1 + cos(...))`. Note: this line also crashes first due to math.PI (BUG-025).
-
----
-
-### BUG-058: `Schedulers/step_scheduler.py` L23
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | lr_scheduler |
-| Assignment | Stage II - Task 2: LR Scheduler |
-| Confidence | high |
-| Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
-
-**Symptom**: Learning rate decays linearly or becomes zero instead of decaying exponentially.
-
-**Root Cause**: The formula multiplies by gamma * n instead of gamma ** n.
-
-**Fix**: Change self.gamma * (t // self.step_size) to self.gamma ** (t // self.step_size).
-
-**Chief Reasoning**:
-- *chief_a*: Schedulers/step_scheduler.py line 23: `base_lr * self.gamma * (t // self.step_size)`. At t=0: gamma*0=0, so lr=0 immediately! The formula should use exponentiation: gamma ** (t // step_size). At t=0: gamma^0=1, lr=base_lr. At t=step_size: gamma^1, etc.
-- *chief_b*: Schedulers/step_scheduler.py line 23: `base_lr * self.gamma * (t // self.step_size)`. Should be `gamma ** (t // step_size)`. At t=0, (t//step_size)=0, so lr = base_lr * gamma * 0 = 0. Learning rate is zero from the start! Even after step_size steps, it decays linearly instead of exponentially. Fix: use `**` instead of `*`.
 
 ---
 
