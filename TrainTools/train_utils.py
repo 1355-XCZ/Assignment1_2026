@@ -31,7 +31,7 @@ def train_single_epoch(model, optimizer, scheduler, data_iter,
         loss   = loss_fn(p1, p2, y1, y2)
         loss_list.append(float(loss.item()))
 
-        loss.item().backward()
+        loss.backward()
         optimizer.step()
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         scheduler.step()

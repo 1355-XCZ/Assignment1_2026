@@ -521,7 +521,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-026: `TrainTools/train_utils.py` L30
+### BUG-026 ✅: `TrainTools/train_utils.py` L30
 
 | Field | Value |
 |-------|-------|
@@ -530,6 +530,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | training_loop |
 | Assignment | Stage I - Task 2: Train/Eval Loop |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: AttributeError: 'float' object has no attribute 'backward' — loss.item() returns a Python float, which cannot be back-propagated.
@@ -537,6 +538,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: loss.item().backward() calls .item() before .backward(), detaching the computation graph.
 
 **Fix**: Change `loss.item().backward()` to `loss.backward()`.
+
+**BUG Impact (if not fixed)**: Backpropagation fails immediately because `.item()` converts the loss tensor into a Python float, which has no gradient graph and no `.backward()` method, so training cannot proceed.
+
+**FIX Impact (after fixed)**: Gradients are now computed on the tensor loss correctly, enabling normal optimizer updates and allowing the training loop to run as intended.
 
 **Chief Reasoning**:
 - *chief_a*: TrainTools/train_utils.py line 30: `loss.item().backward()`. loss.item() returns a Python float, severing the computation graph. float has no .backward() method → AttributeError. Fix: `loss.backward()`.
