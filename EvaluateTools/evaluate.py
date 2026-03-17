@@ -116,7 +116,7 @@ def evaluate(
 
     ckpt_path = os.path.join(save_dir, ckpt_name)
     ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
-    model.load_state_dict(ckpt["model"])
+    model.load_state_dict(ckpt["model_state"])
 
     metrics, ans = run_eval(
         model, dev_dataset, dev_eval,

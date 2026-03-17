@@ -44,7 +44,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ## Must Fix (52)
 
-### BUG-001: `EvaluateTools/evaluate.py` L107
+### BUG-001 ✅: `EvaluateTools/evaluate.py` L119
 
 | Field | Value |
 |-------|-------|
@@ -53,6 +53,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | checkpoint |
 | Assignment | Stage I - Task 2: Train/Eval Loop |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] | gpt-5.4-pro[reason:xhigh] |
 
 **Symptom**: KeyError: 'model' when loading the checkpoint because the saved key is 'model_state'.
@@ -60,6 +61,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: `ckpt["model"]` does not match the key `"model_state"` used in `save_checkpoint`.
 
 **Fix**: Change `ckpt["model"]` to `ckpt["model_state"]`.
+
+**BUG Impact (if not fixed)**: Evaluation cannot restore trained model weights from assignment checkpoints, so the eval pipeline fails at checkpoint loading and no metrics can be produced.
+
+**FIX Impact (after fixed)**: Checkpoint key names are now consistent across save/load paths, enabling successful state restoration and normal evaluation metric computation.
 
 **Chief Reasoning**:
 - *chief_a*: evaluate.py line ~107: `model.load_state_dict(ckpt['model'])`. train_utils.py save_checkpoint stores weights as `'model_state': model.state_dict()`. KeyError: 'model' is guaranteed when loading any checkpoint produced by training.
