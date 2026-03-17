@@ -44,7 +44,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ## Must Fix (52)
 
-### BUG-001 ✅: `EvaluateTools/evaluate.py` L119
+### BUG-001/002 ✅: `EvaluateTools/evaluate.py` L119
 
 | Field | Value |
 |-------|-------|
@@ -69,29 +69,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: evaluate.py line ~107: `model.load_state_dict(ckpt['model'])`. train_utils.py save_checkpoint stores weights as `'model_state': model.state_dict()`. KeyError: 'model' is guaranteed when loading any checkpoint produced by training.
 - *chief_b*: evaluate.py line ~107: `model.load_state_dict(ckpt['model'])` but save_checkpoint in train_utils.py uses `'model_state': model.state_dict()`. KeyError: 'model' at runtime. Confirmed by inspecting both files.
-
----
-
-### BUG-002: `EvaluateTools/evaluate.py` L124
-
-| Field | Value |
-|-------|-------|
-| Stage | stage1 |
-| Severity | critical |
-| Category | checkpoint |
-| Assignment | Stage I - Task 2: Train/Eval Loop |
-| Confidence | high |
-| Discovered by | gpt-5.4-pro[reason:xhigh] |
-
-**Symptom**: evaluate() raises a KeyError when loading a checkpoint produced by the training code.
-
-**Root Cause**: Checkpoint loading looks for `ckpt["model"]`, but `save_checkpoint()` stores the model weights under `"model_state"`.
-
-**Fix**: Load the state dict from the saved key name, e.g. `model.load_state_dict(ckpt["model_state"])`.
-
-**Chief Reasoning**:
-- *chief_a*: Exact duplicate of BUG-004. Same root cause (ckpt['model'] vs ckpt['model_state']), same file, same line.
-- *chief_b*: Exact duplicate of BUG-004: same root cause (ckpt key 'model' vs 'model_state'), same file, same fix.
 
 ---
 
@@ -630,6 +607,34 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-057 ✅: `Schedulers/lambda_scheduler.py` L21
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but currently causes Stage I loss NaN) |
+| Severity | major |
+| Category | lr_scheduler |
+| Assignment | Stage II - Task 2: LR Scheduler |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
+
+**Symptom**: The lambda output is added to the base learning rate, so a factor of 1.0 increases lr by 1 instead of leaving it unchanged.
+
+**Root Cause**: The scheduler uses addition instead of multiplication when applying lr_lambda(t).
+
+**Fix**: Return [base_lr * factor for base_lr in self.base_lrs].
+
+**BUG Impact (if not fixed)**: Learning rate becomes abnormally large under the intended no-op lambda path (e.g., `0.001 -> 1.001`), which destabilizes optimization and can drive training loss to `NaN`, blocking Stage I trainability goals.
+
+**FIX Impact (after fixed)**: Learning rate scaling follows the intended multiplicative rule, restoring numerically reasonable update magnitudes and removing this direct LR-induced `NaN` failure path.
+
+**Chief Reasoning**:
+- *chief_a*: Schedulers/lambda_scheduler.py line 21: `return [base_lr + factor ...]`. LambdaLR should multiply base_lr by the lambda output, not add. With lambda returning 1.0 and base_lr=1.0: code gives lr=2.0 instead of lr=1.0. Fix: base_lr * factor.
+- *chief_b*: Schedulers/lambda_scheduler.py line 21: `return [base_lr + factor for base_lr in self.base_lrs]`. LambdaLR should multiply: `base_lr * factor`. With + and factor=1.0, lr = base_lr + 1.0 instead of base_lr * 1.0, doubling the effective learning rate for Adam (base_lr=1.0).
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -1127,29 +1132,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Schedulers/cosine_scheduler.py line 25: formula is `eta_min + (base_lr - eta_min) * (1 + cos(...))`. Missing the 0.5 factor. At t=0: lr = eta_min + 2*(base_lr-eta_min) = 2*base_lr - eta_min, which is ~2x the intended initial lr. Correct: `eta_min + 0.5 * (base_lr - eta_min) * (1 + cos(...))`.
 - *chief_b*: Schedulers/cosine_scheduler.py line 25: formula is `eta_min + (base_lr - eta_min) * (1 + cos(...))`. Missing the 0.5 factor. At t=0, cos(0)=1, so lr = eta_min + 2*(base_lr - eta_min) = 2*base_lr - eta_min, which exceeds the initial lr. Correct: `0.5 * (base_lr - eta_min) * (1 + cos(...))`. Note: this line also crashes first due to math.PI (BUG-025).
-
----
-
-### BUG-057: `Schedulers/lambda_scheduler.py` L21
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | lr_scheduler |
-| Assignment | Stage II - Task 2: LR Scheduler |
-| Confidence | high |
-| Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
-
-**Symptom**: The lambda output is added to the base learning rate, so a factor of 1.0 increases lr by 1 instead of leaving it unchanged.
-
-**Root Cause**: The scheduler uses addition instead of multiplication when applying lr_lambda(t).
-
-**Fix**: Return [base_lr * factor for base_lr in self.base_lrs].
-
-**Chief Reasoning**:
-- *chief_a*: Schedulers/lambda_scheduler.py line 21: `return [base_lr + factor ...]`. LambdaLR should multiply base_lr by the lambda output, not add. With lambda returning 1.0 and base_lr=1.0: code gives lr=2.0 instead of lr=1.0. Fix: base_lr * factor.
-- *chief_b*: Schedulers/lambda_scheduler.py line 21: `return [base_lr + factor for base_lr in self.base_lrs]`. LambdaLR should multiply: `base_lr * factor`. With + and factor=1.0, lr = base_lr + 1.0 instead of base_lr * 1.0, doubling the effective learning rate for Adam (base_lr=1.0).
 
 ---
 
