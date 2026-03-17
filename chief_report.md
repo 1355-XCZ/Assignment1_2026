@@ -747,6 +747,34 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-059 ✅: `TrainTools/train_utils.py` L35
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1&2 (defined as Stage II mechanism bug, but currently causes Stage I loss NaN) |
+| Severity | major |
+| Category | training_loop |
+| Assignment | Stage II - Task 2: Train/Eval Loop |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | gemini-3.1-pro-preview[think:high] |
+
+**Symptom**: Gradient clipping has no effect because optimizer.step() is called before clip_grad_norm_, so parameters are updated with unclipped gradients.
+
+**Root Cause**: optimizer.step() and clip_grad_norm_ are in the wrong order; clipping must occur after backward but before step.
+
+**Fix**: Move `torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)` to before `optimizer.step()`.
+
+**BUG Impact (if not fixed)**: Gradient clipping is effectively disabled during parameter updates, so large gradients are applied directly; this increases optimization instability and can trigger exploding updates or NaN-prone training behavior.
+
+**FIX Impact (after fixed)**: Gradients are clipped before each optimizer update, restoring the intended stabilization effect of `grad_clip` and improving robustness under high-gradient steps.
+
+**Chief Reasoning**:
+- *chief_a*: TrainTools/train_utils.py line 31: `optimizer.step()` precedes `clip_grad_norm_()`. Parameters are updated with unclipped gradients; the subsequent clipping has no effect. Must be: backward → clip → step. Note: currently masked by BUG-032 (loss.item().backward() crash).
+- *chief_b*: TrainTools/train_utils.py lines 31-32: `optimizer.step()` is called BEFORE `clip_grad_norm_()`. Gradients are applied unclipped, then clipping happens after the update (which is pointless). Fix: move clip_grad_norm_ before optimizer.step(). (Note: line 30's loss.item().backward() bug (BUG-032) prevents reaching this code, but once fixed this ordering bug manifests.)
+
+---
+
 ### BUG-034: `EvaluateTools/eval_utils.py` L100
 
 | Field | Value |
@@ -1175,29 +1203,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: Schedulers/step_scheduler.py line 23: `base_lr * self.gamma * (t // self.step_size)`. At t=0: gamma*0=0, so lr=0 immediately! The formula should use exponentiation: gamma ** (t // step_size). At t=0: gamma^0=1, lr=base_lr. At t=step_size: gamma^1, etc.
 - *chief_b*: Schedulers/step_scheduler.py line 23: `base_lr * self.gamma * (t // self.step_size)`. Should be `gamma ** (t // step_size)`. At t=0, (t//step_size)=0, so lr = base_lr * gamma * 0 = 0. Learning rate is zero from the start! Even after step_size steps, it decays linearly instead of exponentially. Fix: use `**` instead of `*`.
-
----
-
-### BUG-059: `TrainTools/train_utils.py` L31
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | training_loop |
-| Assignment | Stage II - Task 2: Train/Eval Loop |
-| Confidence | high |
-| Discovered by | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | gemini-3.1-pro-preview[think:high] |
-
-**Symptom**: Gradient clipping has no effect because optimizer.step() is called before clip_grad_norm_, so parameters are updated with unclipped gradients.
-
-**Root Cause**: optimizer.step() and clip_grad_norm_ are in the wrong order; clipping must occur after backward but before step.
-
-**Fix**: Move `torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)` to before `optimizer.step()`.
-
-**Chief Reasoning**:
-- *chief_a*: TrainTools/train_utils.py line 31: `optimizer.step()` precedes `clip_grad_norm_()`. Parameters are updated with unclipped gradients; the subsequent clipping has no effect. Must be: backward → clip → step. Note: currently masked by BUG-032 (loss.item().backward() crash).
-- *chief_b*: TrainTools/train_utils.py lines 31-32: `optimizer.step()` is called BEFORE `clip_grad_norm_()`. Gradients are applied unclipped, then clipping happens after the update (which is pointless). Fix: move clip_grad_norm_ before optimizer.step(). (Note: line 30's loss.item().backward() bug (BUG-032) prevents reaching this code, but once fixed this ordering bug manifests.)
 
 ---
 

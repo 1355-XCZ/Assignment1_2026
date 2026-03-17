@@ -32,8 +32,8 @@ def train_single_epoch(model, optimizer, scheduler, data_iter,
         loss_list.append(float(loss.item()))
 
         loss.backward()
-        optimizer.step()
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        optimizer.step()
         scheduler.step()
 
     mean_loss = float(np.mean(loss_list))
