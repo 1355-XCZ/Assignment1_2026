@@ -22,9 +22,34 @@ def step_scheduler(optimizer, args):
     )
 
 
+import math
+
+
+def _constant_factor(_step):
+    return 1.0
+
+
+class _WarmupFactor:
+    """Logarithmic warmup following the QANet paper recipe. Picklable."""
+    def __init__(self, warmup_steps):
+        self.warmup_steps = warmup_steps
+        self.cr = 1.0 / math.log(warmup_steps)
+
+    def __call__(self, step):
+        if step < self.warmup_steps:
+            return self.cr * math.log(step + 1)
+        return 1.0
+
+
 def lambda_scheduler(optimizer, args):
-    """LambdaLR with a constant factor of 1.0 — learning rate stays fixed."""
-    return LambdaLR(optimizer, lr_lambda=lambda _: 1.0)
+    """LambdaLR with logarithmic warmup following the QANet paper recipe."""
+    warmup = getattr(args, "lr_warm_up_num", 1000)
+    return LambdaLR(optimizer, lr_lambda=_WarmupFactor(warmup))
+
+
+def none_scheduler(optimizer, args):
+    """No-op scheduler — learning rate stays constant."""
+    return LambdaLR(optimizer, lr_lambda=_constant_factor)
 
 
 # ── Registry ─────────────────────────────────────────────────────────────────
@@ -33,4 +58,5 @@ schedulers = {
     "cosine":  cosine_scheduler,
     "step":    step_scheduler,
     "lambda":  lambda_scheduler,
+    "none":    none_scheduler,
 }
