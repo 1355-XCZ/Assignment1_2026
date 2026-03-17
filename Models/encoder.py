@@ -118,7 +118,7 @@ class EncoderBlock(nn.Module):
             if (i + 1) % 2 == 0:
                 out = self.conv_drops[i](out)
             res = out
-            out = self.norms[i + 1](out)
+            out = self.norms[i](out)
 
         out = self.self_att(out, mask)
         out = res

@@ -330,7 +330,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-017: `Models/encoder.py` L87
+### BUG-017/018/019 ✅: `Models/encoder.py` L121
 
 | Field | Value |
 |-------|-------|
@@ -339,6 +339,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | normalization |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: IndexError: self.norms[i+1] goes out of bounds on the last conv iteration (i = conv_num-1 → index conv_num, but list has conv_num elements indexed 0..conv_num-1).
@@ -347,55 +348,13 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Fix**: Change self.norms[i + 1] to self.norms[i].
 
+**BUG Impact (if not fixed)**: The final convolution iteration indexes one element past the normalization list boundary, causing runtime `IndexError` and preventing encoder blocks from completing forward propagation.
+
+**FIX Impact (after fixed)**: Each convolution stage now uses the matching normalization module (`self.norms[i]`), eliminating out-of-range access and restoring stable encoder forward execution.
+
 **Chief Reasoning**:
 - *chief_a*: Models/encoder.py line 87: `self.norms[i + 1]` in a loop i=0..conv_num-1, but self.norms has exactly conv_num elements (indices 0..conv_num-1). The last iteration accesses index conv_num → IndexError. Also, self.norms[0] is never used.
 - *chief_b*: Models/encoder.py line ~103: `self.norms[i + 1]` in the convolution loop. self.norms has conv_num elements (indices 0..conv_num-1). At the last iteration i=conv_num-1, index i+1=conv_num is out of bounds → IndexError. Also skips self.norms[0]. Fix: use self.norms[i].
-
----
-
-### BUG-018: `Models/encoder.py` L103
-
-| Field | Value |
-|-------|-------|
-| Stage | stage1 |
-| Severity | critical |
-| Category | normalization |
-| Assignment | Stage I - Task 3: Model Architecture |
-| Confidence | high |
-| Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] | gemini-3.1-pro-preview[think:high] |
-
-**Symptom**: The encoder crashes on the last convolution with an index-out-of-range error, and it also skips the first normalization slot before that.
-
-**Root Cause**: self.norms has length conv_num, but the loop indexes it as self.norms[i + 1].
-
-**Fix**: Index self.norms with i, or allocate conv_num + 1 norms and use them consistently.
-
-**Chief Reasoning**:
-- *chief_a*: Duplicate of BUG-018. Same off-by-one norms indexing bug.
-- *chief_b*: Duplicate of BUG-018. Same off-by-one norm indexing bug.
-
----
-
-### BUG-019: `Models/encoder.py` L129
-
-| Field | Value |
-|-------|-------|
-| Stage | stage1 |
-| Severity | critical |
-| Category | normalization |
-| Assignment | Stage I - Task 3: Model Architecture |
-| Confidence | high |
-| Discovered by | gpt-5.4-pro[reason:xhigh] |
-
-**Symptom**: Every encoder block raises `IndexError` on its last convolution step.
-
-**Root Cause**: `self.norms` contains `conv_num` elements, but the loop indexes `self.norms[i + 1]`, so the final iteration accesses one past the end.
-
-**Fix**: Index `self.norms[i]` instead, or allocate one extra normalization layer if that was the intent.
-
-**Chief Reasoning**:
-- *chief_a*: Duplicate of BUG-018.
-- *chief_b*: Duplicate of BUG-018. Same off-by-one norm indexing bug.
 
 ---
 
