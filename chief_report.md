@@ -363,7 +363,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-020: `Models/heads.py` L18
+### BUG-020 ✅: `Models/heads.py` L18
 
 | Field | Value |
 |-------|-------|
@@ -372,6 +372,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | shape_mismatch |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: torch.cat([M1, M2], dim=0) concatenates along batch dim producing [2B, C, L] instead of [B, 2C, L], causing matmul dimension mismatch with w1 of size [2C].
@@ -379,6 +380,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: Wrong concatenation dimension: `dim=0` should be `dim=1`.
 
 **Fix**: Change `torch.cat([M1, M2], dim=0)` to `torch.cat([M1, M2], dim=1)`.
+
+**BUG Impact (if not fixed)**: Pointer head logits cannot be computed due to channel/batch-axis mismatch after concatenation (`[2B, C, L]` instead of `[B, 2C, L]`), causing runtime dimension errors and blocking span prediction.
+
+**FIX Impact (after fixed)**: Concatenation now preserves batch axis and doubles channel axis (`[B, 2C, L]`), so `w1/w2` projections produce valid `[B, L]` start/end logits and the output head executes correctly.
 
 **Chief Reasoning**:
 - *chief_a*: Models/heads.py line 18: `torch.cat([M1, M2], dim=0)` on [B,C,L] gives [2B,C,L]. Then `torch.matmul(self.w1, X1)` with w1=[2C] against [2B,C,L] tries to dot 2C with C (second-to-last dim) → size mismatch crash. Fix: dim=1 gives [B,2C,L], then matmul [2C]@[B,2C,L]→[B,L] correctly.
