@@ -113,7 +113,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-004: `Models/Normalizations/layernorm.py` L36
+### BUG-004 ✅: `Models/Normalizations/layernorm.py` L37
 
 | Field | Value |
 |-------|-------|
@@ -122,6 +122,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | normalization |
 | Assignment | Stage I - Task 3: Model Architecture |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: Crash during normalization due to shape mismatch when broadcasting x - mean.
@@ -129,6 +130,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: keepdim=False removes the reduced dimensions, causing broadcasting to fail.
 
 **Fix**: Set keepdim=True in mean and var calculations.
+
+**BUG Impact (if not fixed)**: Layer normalization fails at runtime due to invalid broadcasting between `[B, C, L]` and reduced statistics shaped like `[B]`, blocking forward propagation through normalization layers.
+
+**FIX Impact (after fixed)**: Reduced statistics keep singleton dimensions (e.g., `[B, 1, 1]`), broadcasting is valid, and normalization executes stably in the encoder pipeline.
 
 **Chief Reasoning**:
 - *chief_a*: Models/Normalizations/layernorm.py line 36-37: `mean = x.mean(dim=dims, keepdim=False)`. For x=[B,C,L] and dims=(-2,-1), mean becomes [B] instead of [B,1,1]. Then `x - mean` tries to broadcast [B,C,L] - [B], which fails (ambiguous broadcast). Setting keepdim=True yields [B,1,1] which broadcasts correctly.
