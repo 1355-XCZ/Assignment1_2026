@@ -622,6 +622,34 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-034 ✅: `EvaluateTools/eval_utils.py` L107-108
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | critical |
+| Category | evaluation |
+| Assignment | Stage I - Task 2: Train/Eval Loop |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
+
+**Symptom**: Span prediction indices are reduced over the batch axis, producing incorrect per-sample answers and unreliable F1/EM signals during train/eval reporting.
+
+**Root Cause**: `torch.argmax(p1, dim=0)` and `torch.argmax(p2, dim=0)` reduce over batch dimension instead of sequence dimension for tensors shaped `[B, L]`.
+
+**Fix**: Change argmax dimension from `dim=0` to `dim=1` in both calls.
+
+**BUG Impact (if not fixed)**: Evaluation metrics become semantically invalid because predicted start/end positions do not correspond to per-example sequence maxima, undermining Stage I empirical trainability checks.
+
+**FIX Impact (after fixed)**: Predicted spans are computed per sample (`[B]`), restoring valid token extraction and making F1/EM trustworthy for Stage I training validation.
+
+**Chief Reasoning**:
+- *chief_a*: Using `dim=0` on `[B, L]` collapses batch dimension and breaks per-example span decoding logic; `dim=1` is required for sequence-wise argmax.
+- *chief_b*: Evaluation can still run, but metrics reflect wrong decoded spans; fixing argmax axis restores correct sample-aligned predictions.
+
+---
+
 ### BUG-057 ✅: `Schedulers/lambda_scheduler.py` L21
 
 | Field | Value |
@@ -932,29 +960,6 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Chief Reasoning**:
 - *chief_a*: `base_lr * self.gamma * (t // self.step_size)` gives `lr=0` at `t=0`; correct StepLR must use exponentiation to keep `lr=base_lr` at startup.
 - *chief_b*: Multiplication-by-step-index creates linear/degenerate decay behavior; replacing with `**` restores canonical stepwise schedule semantics.
-
----
-
-### BUG-034: `EvaluateTools/eval_utils.py` L100
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | critical |
-| Category | evaluation |
-| Assignment | Stage II - Task 3: Attention Mechanism |
-| Confidence | high |
-| Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
-
-**Symptom**: argmax over dim=0 (batch dimension) produces a tensor of shape (seq_len,) instead of (batch_size,), yielding completely wrong answer indices and shape mismatches with the batch of ids.
-
-**Root Cause**: `torch.argmax(p1, dim=0)` and `torch.argmax(p2, dim=0)` use dim=0 (batch) instead of dim=1 (sequence length). p1/p2 have shape (batch, seq_len).
-
-**Fix**: Change `dim=0` to `dim=1` in both `torch.argmax` calls.
-
-**Chief Reasoning**:
-- *chief_a*: EvaluateTools/eval_utils.py line 100: `torch.argmax(p1, dim=0)` on p1=[B,seq_len] reduces over batch dim, yielding [seq_len] instead of [B]. Downstream code expects per-example predictions. Fix: dim=1. Classified as Stage II because evaluation can technically run (argmax still produces a tensor), but answers are completely wrong.
-- *chief_b*: EvaluateTools/eval_utils.py line ~100: `torch.argmax(p1, dim=0)` reduces over batch dim (0) instead of sequence dim (1). p1/p2 are [B, seq_len], so dim=0 produces [seq_len] instead of [B]. All predicted spans are wrong and subsequent shape operations fail. Fix: dim=1.
 
 ---
 
