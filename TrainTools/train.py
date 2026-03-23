@@ -64,6 +64,7 @@ def train(
     momentum:           float = 0.9,    # SGD / SGDMomentum
 
     # ── Scheduler hyperparameters ─────────────────────────────────────────────
+    warmup_steps:       int   = 1000,   # lambda: linear warmup steps (QANet paper)
     lr_step_size:       int   = 10000,  # step: decay every n steps
     lr_gamma:           float = 0.5,    # step: multiplicative decay factor
 
@@ -190,15 +191,15 @@ def train(
         dev_f1 = dv_metrics["f1"]
         dev_em = dv_metrics["exact_match"]
 
-        if dev_f1 < best_f1 and dev_em < best_em:
+        if dev_f1 > best_f1 or dev_em > best_em:
+            patience = 0
+            best_f1  = max(best_f1, dev_f1)
+            best_em  = max(best_em, dev_em)
+        else:
             patience += 1
             if patience > early_stop:
                 print("Early stopping triggered.")
                 break
-        else:
-            patience = 0
-            best_f1  = max(best_f1, dev_f1)
-            best_em  = max(best_em, dev_em)
 
         save_checkpoint(
             save_dir, ckpt_name, model, optimizer, scheduler,

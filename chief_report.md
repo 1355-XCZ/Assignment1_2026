@@ -1708,7 +1708,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-070: `TrainTools/train.py` L148
+### BUG-070 ✅: `TrainTools/train.py` L194
 
 | Field | Value |
 |-------|-------|
@@ -1717,13 +1717,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | training_loop |
 | Assignment | Stage II - Task 2: Train/Eval Loop |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] |
 
 **Symptom**: Early stopping almost never triggers: patience only increments when *both* F1 and EM are strictly worse than their respective bests, so any minor fluctuation in one metric resets patience indefinitely.
 
-**Root Cause**: The condition `if dev_f1 < best_f1 and dev_em < best_em` uses `and` (both must degrade) with strict `<` (ties don't count). The correct early-stop condition should be that *neither* metric improved, i.e. `dev_f1 <= best_f1 and dev_em <= best_em`, or equivalently the improvement branch should check `dev_f1 > best_f1 or dev_em > best_em`.
+**Root Cause**: The condition `if dev_f1 < best_f1 and dev_em < best_em` uses `and` (both must degrade) with strict `<` (ties don't count). The correct early-stop condition should be that *neither* metric improved.
 
-**Fix**: Change the condition to check for lack of any improvement, e.g. swap `and` for `or`: `if dev_f1 < best_f1 or dev_em < best_em:` (or restructure to check for improvement first).
+**Fix**: Restructure to check for improvement first: `if dev_f1 > best_f1 or dev_em > best_em: patience=0; update bests; else: patience+=1`.
+
+**BUG Impact (if not fixed)**: Early stopping is effectively disabled — patience almost never accumulates because any fluctuation in either metric resets it, wasting compute on stagnated training runs.
+
+**FIX Impact (after fixed)**: Early stopping triggers correctly when neither F1 nor EM improves for `early_stop` consecutive evaluations.
 
 **Chief Reasoning**:
 - *chief_a*: TrainTools/train.py line 148: `if dev_f1 < best_f1 and dev_em < best_em` requires BOTH metrics to strictly decline to increment patience. If either metric stays flat or improves even slightly, patience resets. This makes early stopping nearly impossible to trigger. Fix: use `or` or restructure to check for any improvement.
@@ -1966,6 +1971,6 @@ These `H-` items are not strict code-defect entries. They are used to document d
 
 **Rolled Back Changes**:
 - `Optimizers/optimizer.py`: Reverted Adam factory from `lr=args.learning_rate` back to `lr=1.0` (original design).
-- `Schedulers/scheduler.py`: Removed `_WarmupFactor` class, removed `none_scheduler`, removed `"none"` from registry. `lambda_scheduler` now uses `_constant_factor` (named function returning 1.0) — matching the original behavior but with serialization compatibility (see BUG-N001).
+- `Schedulers/scheduler.py`: Removed `none_scheduler` and `"none"` from registry.
 
-**Current State**: Adam + lambda produces lr=1.0 (loss explosion). This is expected at this stage. The `lambda_scheduler` warmup implementation is a **Stage II task** that will restore proper Adam training behavior.
+**Current State (resolved)**: `lambda_scheduler` now implements linear warmup via `_WarmupFactor` class (picklable). With `Adam(lr=1.0)` + `lambda_scheduler`, the effective lr follows the QANet paper schedule: linear warmup from 0 to `learning_rate` (0.001) over `warmup_steps` (1000), then constant. See BUG-N001.
