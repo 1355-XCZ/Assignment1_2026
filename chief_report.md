@@ -1177,28 +1177,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-050: `Models/encoder.py` L132
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | attention |
-| Assignment | Stage II - Task 3: Attention Mechanism |
-| Confidence | high |
-| Discovered by | gpt-5.4-pro[reason:xhigh] |
-
-**Symptom**: The self-attention sublayer has no effect; the block effectively drops back to the residual path only.
-
-**Root Cause**: Immediately after `self.self_att(out, mask)`, the code overwrites the result with `out = res` instead of adding the residual connection.
-
-**Fix**: Keep the attention output and combine it with the residual, e.g. `out = self.drop(out) + res` (or equivalent layer-drop logic).
-
-**Chief Reasoning**:
-- *chief_a*: Duplicate of BUG-037. Same attention output overwritten by residual.
-- *chief_b*: Duplicate of BUG-037. Same attention residual overwrite: `out = res` discards self-attention output.
-
-### BUG-054: `Optimizers/sgd.py` L38
+### BUG-054 ✅: `Optimizers/sgd.py` L38
 
 | Field | Value |
 |-------|-------|
@@ -1207,6 +1186,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | optimizer |
 | Assignment | Stage II - Task 1: Optimizer |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: Weight decay subtracts wd*p from gradient instead of adding it, implementing negative L2 regularization
@@ -1215,11 +1195,73 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Fix**: Change alpha=-wd to alpha=wd
 
+**BUG Impact (if not fixed)**: SGD with weight decay pushes parameters away from zero (anti-regularization), causing weights to grow and potentially destabilizing training.
+
+**FIX Impact (after fixed)**: Weight decay correctly penalizes large weights, restoring L2 regularization behavior for SGD.
+
 **Chief Reasoning**:
 - *chief_a*: Optimizers/sgd.py line 38: `grad = grad.add(p, alpha=-wd)` gives grad - wd*p. Then p.add_(grad, alpha=-lr) gives p - lr*(grad-wd*p) = p - lr*grad + lr*wd*p. The +lr*wd*p term increases weight magnitude — negative regularization. Fix: alpha=wd.
 - *chief_b*: Optimizers/sgd.py line 38: `grad = grad.add(p, alpha=-wd)` computes grad - wd*p. Same as BUG-053: L2 regularization needs positive alpha. Fix: alpha=wd.
 
 ---
+
+### BUG-N003 ✅: `Models/encoder.py` L78
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | major |
+| Category | attention |
+| Assignment | Stage II - Task 3: Attention Mechanism |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | peer cross-reference |
+
+**Symptom**: Attention weights are over-concentrated (near one-hot softmax outputs), causing vanishing gradients through the attention sublayer.
+
+**Root Cause**: The scaled dot-product attention is missing the `1/√d_k` scaling factor. `self.scale` is correctly defined in `__init__` as `1.0 / math.sqrt(self.d_k)`, but the forward pass computes `torch.bmm(q, k.transpose(1,2))` without multiplying by `self.scale`.
+
+**Fix**: Change `attn = torch.bmm(q, k.transpose(1, 2))` to `attn = torch.bmm(q, k.transpose(1, 2)) * self.scale`.
+
+**BUG Impact (if not fixed)**: Without scaling, the dot-product magnitudes grow with `d_k`, pushing softmax outputs toward extreme values (near 0 or 1). This makes attention gradients near-zero, effectively preventing the attention sublayer from learning meaningful patterns.
+
+**FIX Impact (after fixed)**: Dot-product values are properly normalized, producing smoother attention distributions and stable gradients through the attention mechanism.
+
+---
+
+### BUG-N004 ↩️ Rolled Back: `Models/encoder.py` L120-121
+
+| Field | Value |
+|-------|-------|
+| Stage | N/A (rolled back) |
+| Severity | N/A |
+| Category | encoder |
+| Assignment | Stage II - Task 3: Attention Mechanism |
+| Confidence | N/A |
+| Status | ↩️ Rolled Back — original code is correct |
+| Discovered by | peer cross-reference |
+
+**Original Proposed Fix**: Swap the order from `res = out; out = self.norms[i](out)` to `out = self.norms[i](out); res = out`.
+
+**Why Rolled Back**: The QANet paper (Yu et al., ICLR 2018) defines the residual block as `f(layernorm(x)) + x`, where the residual is the **un-normalized** input `x`. The original code order (`res = out` then `out = norms[i](out)`) correctly implements this: it saves the pre-norm output as the residual and normalizes for the next sublayer input. The proposed swap would make the residual carry post-norm features, breaking the "full identity path" described in the paper and changing the formula to `f(layernorm(x)) + layernorm(x)`.
+
+---
+
+### BUG-N005 ↩️ Rolled Back: `Models/encoder.py` L19
+
+| Field | Value |
+|-------|-------|
+| Stage | N/A (rolled back) |
+| Severity | N/A |
+| Category | attention |
+| Assignment | Stage II - Task 3: Attention Mechanism |
+| Confidence | N/A |
+| Status | ↩️ Rolled Back — not a bug |
+| Discovered by | peer cross-reference |
+
+**Original Proposed Fix**: Change `masked_fill(mask, -1e30)` to `masked_fill(mask, -1e9)`.
+
+**Why Rolled Back**: `-1e30` works correctly in float32 training. The difference is purely a numerical preference, not a functional bug. The original value is kept unchanged.
 
 ### BUG-056: `Schedulers/cosine_scheduler.py` L25
 
