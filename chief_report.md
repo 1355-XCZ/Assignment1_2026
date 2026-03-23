@@ -1049,7 +1049,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-042: `Models/Initializations/kaiming.py` L37
+### BUG-042 ✅: `Models/Initializations/kaiming.py` L38
 
 | Field | Value |
 |-------|-------|
@@ -1058,13 +1058,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | initialization |
 | Assignment | Stage II - Task 5: Initialization |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] | gpt-5.4-pro[reason:xhigh] |
 
 **Symptom**: Kaiming uniform initialization has wrong bound, leading to vanishing activations after ReLU layers
 
 **Root Cause**: std = sqrt(1.0 / fan) instead of the correct He formula std = sqrt(2.0 / fan)
 
-**Fix**: Change `math.sqrt(1.0 / fan)` to `math.sqrt(2.0 / fan)` in kaiming_uniform_
+**Fix**: Change `math.sqrt(1.0 / fan)` to `math.sqrt(2.0 / fan)` in `kaiming_uniform_`.
+
+**BUG Impact (if not fixed)**: Same as BUG-041 — uniform variant also uses halved variance, producing under-scaled initial weights for any layers initialized with `kaiming_uniform`.
+
+**FIX Impact (after fixed)**: Uniform bound is derived from the correct He variance, matching `kaiming_normal_` in expected magnitude and restoring proper signal propagation.
 
 **Chief Reasoning**:
 - *chief_a*: Same bug as BUG-041, in kaiming_uniform_ (line 37). Both use sqrt(1.0/fan) instead of sqrt(2.0/fan).
