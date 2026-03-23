@@ -965,7 +965,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-037: `Models/Normalizations/groupnorm.py` L42
+### BUG-037 ✅: `Models/Normalizations/groupnorm.py` L35
 
 | Field | Value |
 |-------|-------|
@@ -974,13 +974,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | normalization |
 | Assignment | Stage II - Task 4: Regularization |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] |
 
 **Symptom**: Channels are split as (B, C//G, G, *spatial) so normalization is computed across interleaved channels rather than contiguous groups, producing wrong statistics and garbled output
 
 **Root Cause**: Reshape order is (B, C//G, G, *spatial) instead of the correct (B, G, C//G, *spatial)
 
-**Fix**: Change x.view(B, C // self.G, self.G, *spatial) to x.view(B, self.G, C // self.G, *spatial)
+**Fix**: Change `x.view(B, C // self.G, self.G, *spatial)` to `x.view(B, self.G, C // self.G, *spatial)`.
+
+**BUG Impact (if not fixed)**: Normalization statistics are computed across interleaved channels from different groups rather than contiguous channel blocks, producing incorrect mean/variance and garbled feature representations when GroupNorm is selected.
+
+**FIX Impact (after fixed)**: Each group normalizes over its own contiguous channel slice, restoring correct per-group statistics and valid GroupNorm behavior.
 
 **Chief Reasoning**:
 - *chief_a*: Models/Normalizations/groupnorm.py line 42: `x.view(B, C // self.G, self.G, *spatial)` puts C//G before G. The normalization dims tuple(range(2,...)) then normalizes over (G, *spatial) instead of (C//G, *spatial), mixing groups with spatial stats. Fix: x.view(B, self.G, C // self.G, *spatial).
