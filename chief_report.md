@@ -1328,6 +1328,32 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
+### BUG-N007 ✅ [Inconsistency]: `Losses/loss.py` L7
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | major |
+| Category | loss_function |
+| Assignment | Stage II - Task 1: Loss Function |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541) + reference implementations (QANet-localminimum, QANet-NLPLearn, QANet-BangLiu) |
+
+**Symptom**: SGD + cosine scheduler combination converges extremely slowly and triggers early stopping before any meaningful learning. Adam is less affected due to its scale-invariant adaptive updates.
+
+**Root Cause**: `qa_nll_loss` applies a `0.5` scaling factor: `0.5 * (nll_loss(p1,y1) + nll_loss(p2,y2))`. The QANet paper defines the loss as the **sum** of negative log-probabilities for start and end positions, with no 0.5 factor. All three reference implementations confirm: `loss = loss_start + loss_end`.
+
+For Adam, the 0.5 is absorbed by its adaptive `m_hat / sqrt(v_hat)` normalization, so the impact is minimal. For SGD, gradient magnitude directly determines step size — the 0.5 literally halves the effective learning rate, making SGD+cosine (with default lr=0.001) nearly untrainable.
+
+**Fix**: Remove `0.5 *` from `qa_nll_loss`, making it `F.nll_loss(p1, y1) + F.nll_loss(p2, y2)`.
+
+**BUG Impact (if not fixed)**: SGD-based training paths are severely handicapped. With default lr=0.001, the effective learning rate is only 0.0005 — too low for convergence within the early stopping window.
+
+**FIX Impact (after fixed)**: All optimizer/scheduler combinations now receive the full gradient signal, making SGD and SGD_momentum paths viable with default hyperparameters.
+
+---
+
 ### BUG-056 ✅: `Schedulers/cosine_scheduler.py` L28
 
 | Field | Value |
