@@ -1304,6 +1304,30 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Why Rolled Back**: `-1e30` works correctly in float32 training. The difference is purely a numerical preference, not a functional bug. The original value is kept unchanged.
 
+### BUG-N006 ✅ [Inconsistency]: `Models/encoder.py` L99-130
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | major |
+| Category | model_architecture |
+| Assignment | Stage II - Task 3: Encoder Block |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541) + reference implementations (QANet-localminimum, QANet-NLPLearn, QANet-BangLiu) |
+
+**Symptom**: Model encoder blocks have reduced expressive capacity; F1 improves slowly despite decreasing loss.
+
+**Root Cause**: The Feed-Forward Network (FFN) sub-layer in `EncoderBlock` only has **one** linear layer (`self.fc = nn.Linear(d_model, d_model)`) followed by activation: `ReLU(W·x)`. The QANet paper inherits the Transformer FFN which has **two** linear layers: `FFN(x) = W₂·ReLU(W₁·x + b₁) + b₂`. All three reference implementations (localminimum, NLPLearn, BangLiu) confirm the two-layer design.
+
+**Fix**: Replace `self.fc` with `self.fc1` and `self.fc2`, both `nn.Linear(d_model, d_model)`. Forward path changed from `act(fc(x))` to `fc2(act(fc1(x)))`, placing ReLU **between** the two layers as the paper specifies.
+
+**BUG Impact (if not fixed)**: Every encoder block's FFN has half the intended nonlinear transformation capacity. The Model Encoder calls this 7 blocks × 3 stacks = 21 times, making this a systematic bottleneck that limits the model's ability to learn complex feature interactions.
+
+**FIX Impact (after fixed)**: Each FFN sub-layer now has the full two-layer nonlinear transformation, matching the paper's architecture and all reference implementations.
+
+---
+
 ### BUG-056 ✅: `Schedulers/cosine_scheduler.py` L28
 
 | Field | Value |
