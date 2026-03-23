@@ -1304,7 +1304,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Why Rolled Back**: `-1e30` works correctly in float32 training. The difference is purely a numerical preference, not a functional bug. The original value is kept unchanged.
 
-### BUG-056: `Schedulers/cosine_scheduler.py` L25
+### BUG-056 ✅: `Schedulers/cosine_scheduler.py` L28
 
 | Field | Value |
 |-------|-------|
@@ -1313,13 +1313,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | lr_scheduler |
 | Assignment | Stage II - Task 2: LR Scheduler |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
 
-**Symptom**: Learning rate does not decay to eta_min properly, it decays to a different value because the 0.5 factor is missing.
+**Symptom**: At t=0, lr = 2×base_lr − eta_min instead of base_lr; the cosine curve starts at double the intended learning rate.
 
-**Root Cause**: The formula is missing the 0.5 multiplier before (base_lr - self.eta_min).
+**Root Cause**: The formula is missing the 0.5 multiplier: `(base_lr - eta_min) * (1 + cos(...))` instead of `0.5 * (base_lr - eta_min) * (1 + cos(...))`.
 
-**Fix**: Add 0.5 * before (base_lr - self.eta_min).
+**Fix**: Add `0.5 *` before `(base_lr - self.eta_min)` in `get_lr()`.
+
+**BUG Impact (if not fixed)**: Cosine scheduler starts at 2× the intended lr, causing unstable optimization in early training and incorrect decay curve throughout.
+
+**FIX Impact (after fixed)**: Cosine schedule correctly ranges from base_lr (at t=0) to eta_min (at t=T_max), matching the standard formula.
 
 **Chief Reasoning**:
 - *chief_a*: Schedulers/cosine_scheduler.py line 25: formula is `eta_min + (base_lr - eta_min) * (1 + cos(...))`. Missing the 0.5 factor. At t=0: lr = eta_min + 2*(base_lr-eta_min) = 2*base_lr - eta_min, which is ~2x the intended initial lr. Correct: `eta_min + 0.5 * (base_lr - eta_min) * (1 + cos(...))`.
