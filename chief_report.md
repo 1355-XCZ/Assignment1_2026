@@ -1497,7 +1497,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-062: `Models/Initializations/xavier.py` L30
+### BUG-062 ✅: `Models/Initializations/xavier.py` L36
 
 | Field | Value |
 |-------|-------|
@@ -1505,7 +1505,8 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Severity | major |
 | Category | initialization |
 | Assignment | Stage II - Task 5: Initialization |
-| Confidence | ? |
+| Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] (chief) |
 
 **Symptom**: Xavier uniform initialization has incorrect variance, producing values that are orders of magnitude too small for typical layer sizes.
@@ -1513,6 +1514,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: `xavier_uniform_` uses `fan_in * fan_out` instead of `fan_in + fan_out` in the denominator — the same bug as `xavier_normal_` (BUG-043). For a layer with fan_in=96, fan_out=96: code gives sqrt(2/(96*96))=0.0147 vs correct sqrt(2/(96+96))=0.102, a 7x difference.
 
 **Fix**: Change `math.sqrt(2.0 / (fan_in * fan_out))` to `math.sqrt(2.0 / (fan_in + fan_out))` in `xavier_uniform_`.
+
+**BUG Impact (if not fixed)**: Same as BUG-043 — uniform variant produces bounds ~7× too small for typical layers, causing severe signal attenuation when Xavier uniform initialization is selected.
+
+**FIX Impact (after fixed)**: Uniform bounds are derived from the correct Glorot denominator `fan_in + fan_out`, restoring properly scaled initialization for the Xavier uniform path.
 
 **Why Missed by Teams**: BUG-043 only explicitly references xavier_normal_ (line 19). Teams examining the file likely spotted the bug in one function and assumed (or didn't verify) the other function was correct, or simply didn't report both locations separately.
 

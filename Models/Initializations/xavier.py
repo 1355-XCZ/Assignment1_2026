@@ -33,7 +33,7 @@ def xavier_uniform_(tensor: torch.Tensor, gain: float = 1.0) -> torch.Tensor:
     bound = sqrt(3) * std,  std = gain * sqrt(2 / (fan_in + fan_out))
     """
     fan_in, fan_out = _calculate_fan(tensor)
-    std = gain * math.sqrt(2.0 / (fan_in * fan_out))
+    std = gain * math.sqrt(2.0 / (fan_in + fan_out))
     bound = math.sqrt(3.0) * std
     with torch.no_grad():
         tensor.uniform_(-bound, bound)
