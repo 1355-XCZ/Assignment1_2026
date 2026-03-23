@@ -22,13 +22,26 @@ def step_scheduler(optimizer, args):
     )
 
 
-def _constant_factor(_step):
-    return 1.0
+class _WarmupFactor:
+    """Picklable callable for LambdaLR: linear warmup then constant.
+
+    Paired with Adam(lr=1.0), the effective lr at step t is:
+        lr(t) = learning_rate * min(1, t / warmup_steps)
+    """
+    def __init__(self, warmup_steps: int, learning_rate: float):
+        self.warmup_steps = warmup_steps
+        self.learning_rate = learning_rate
+
+    def __call__(self, step: int) -> float:
+        if self.warmup_steps > 0 and step < self.warmup_steps:
+            return self.learning_rate * step / self.warmup_steps
+        return self.learning_rate
 
 
 def lambda_scheduler(optimizer, args):
-    """LambdaLR with a constant factor of 1.0 — learning rate stays fixed."""
-    return LambdaLR(optimizer, lr_lambda=_constant_factor)
+    """LambdaLR with linear warmup then constant lr (QANet paper schedule)."""
+    warmup_steps = getattr(args, "warmup_steps", 1000)
+    return LambdaLR(optimizer, lr_lambda=_WarmupFactor(warmup_steps, args.learning_rate))
 
 
 # ── Registry ─────────────────────────────────────────────────────────────────

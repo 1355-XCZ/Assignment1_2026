@@ -578,25 +578,41 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 | Field | Value |
 |-------|-------|
-| Stage | stage1 |
-| Severity | minor |
-| Category | lr_scheduler / serialization |
-| Assignment | Stage I - Task 2: Train/Eval Loop |
+| Stage | stage1 + stage2 |
+| Severity | critical |
+| Category | lr_scheduler |
+| Assignment | Stage I serialization + Stage II warmup |
 | Confidence | high |
 | Status | ✅ Fixed |
 | Discovered by | manual testing |
 
-**Symptom**: Checkpoint saving (`torch.save`) fails with `AttributeError: Can't pickle local object` when `lambda_scheduler` is active, because `LambdaLR` stores the anonymous `lambda _: 1.0` closure which is not serializable by `pickle`.
+**Symptom (Stage I)**: Checkpoint saving (`torch.save`) fails with `AttributeError: Can't pickle local object` when `lambda_scheduler` is active, because `LambdaLR` stores the anonymous `lambda _: 1.0` closure which is not serializable by `pickle`.
 
-**Root Cause**: The original `lambda_scheduler` passes an anonymous lambda (`lambda _: 1.0`) to `LambdaLR`. Python's `pickle` module (used internally by `torch.save`) cannot serialize anonymous/local functions.
+**Symptom (Stage II)**: With `Adam(lr=1.0)` paired to `lambda_scheduler` returning constant 1.0, the effective learning rate is 1.0 — catastrophically high. The design intention (per `optimizer.py` comments) is that `lambda_scheduler` should output the actual lr values including warmup, but this was never implemented.
 
-**Fix**: Replace the anonymous lambda with a module-level named function `_constant_factor`. Behavior is identical (constant factor 1.0), but now serializable.
+**Root Cause**: (1) Anonymous lambda is not picklable. (2) The lambda function returns constant 1.0 instead of implementing the QANet paper's warmup schedule: `lr(t) = learning_rate × min(1, t / warmup_steps)`.
 
-**Rollback Note**: An earlier iteration of this fix also added a `"none"` scheduler to the registry. This has been rolled back — `"none"` was never a valid scheduler option in the original design. The registry retains only the original three entries: `cosine`, `step`, `lambda`. The correct way to achieve "no scheduling" is `scheduler_name="lambda"` (constant factor 1.0).
+**Fix**: Replace the anonymous lambda with a module-level picklable `_WarmupFactor` class that implements linear warmup then constant lr. Added `warmup_steps=1000` parameter to `train.py`. The effective lr schedule is now: linearly ramp from 0 to `learning_rate` (default 0.001) over `warmup_steps` (default 1000), then hold constant.
 
-**BUG Impact (if not fixed)**: Training runs that reach the checkpoint-save step crash during serialization. The training loop itself works, but no checkpoint is persisted.
+**Rollback Note**: An earlier iteration added a `"none"` scheduler to the registry. This has been rolled back — `"none"` was never a valid scheduler option. The registry retains only `cosine`, `step`, `lambda`.
 
-**FIX Impact (after fixed)**: `lambda_scheduler` is checkpoint-safe. `torch.save` succeeds without error when saving optimizer/scheduler state.
+**BUG Impact (if not fixed)**: (Stage I) Checkpoints cannot be saved. (Stage II) Adam+lambda gives lr=1.0, causing immediate divergence; the intended Adam training path is completely unusable.
+
+**FIX Impact (after fixed)**: `lambda_scheduler` is checkpoint-safe and implements the QANet paper's warmup schedule, enabling stable Adam training with the default configuration.
+
+> **⚠️ Warning: Warmup Curve Shape Difference vs Reference Implementations**
+>
+> Our implementation uses **linear warmup** (`lr = target_lr × step / warmup_steps`), which matches the QANet paper's description: *"linearly from 0 to 0.001 in the first 1000 steps"*.
+>
+> However, three widely-used reference implementations (`QANet-localminimum`, `QANet-NLPLearn`, `QANet-BangLiu`) all use **logarithmic warmup** instead: `lr_lambda = (1 / log(W)) × log(step + 1)`, where W = warmup_steps. This is a concave curve that rises much faster initially — at step 100, log warmup reaches ~67% of target lr, while linear warmup only reaches 10%.
+>
+> | step | Log warmup (references) | Linear warmup (ours) |
+> |------|------------------------|---------------------|
+> | 100 | 0.000669 (66.9%) | 0.000100 (10.0%) |
+> | 500 | 0.000900 (90.0%) | 0.000500 (50.0%) |
+> | 999 | 0.001000 (100%) | 0.000999 (99.9%) |
+>
+> Both converge to the same constant lr after warmup. Our linear warmup is faithful to the paper; the log warmup is an engineering variant that may converge faster in practice due to earlier access to higher learning rates. If training convergence is too slow in early steps, consider switching to the logarithmic schedule used by reference implementations.
 
 ---
 
