@@ -988,7 +988,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-038: `Models/encoder.py` L117
+### BUG-038/050 ✅: `Models/encoder.py` L117
 
 | Field | Value |
 |-------|-------|
@@ -997,13 +997,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | attention |
 | Assignment | Stage II - Task 3: Attention Mechanism |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] |
 
-**Symptom**: Self-attention output is completely discarded; the encoder block's attention sub-layer contributes nothing
+**Symptom**: Self-attention output is completely discarded; the encoder block's attention sub-layer contributes nothing.
 
-**Root Cause**: `out = self.self_att(out, mask)` is immediately overwritten by `out = res` on the next line, destroying the attention result instead of forming a residual connection `out = out + res`
+**Root Cause**: `out = self.self_att(out, mask)` is immediately overwritten by `out = res` on the next line, destroying the attention result instead of forming a residual connection `out = out + res`.
 
-**Fix**: Change `out = res` to `out = out + res`
+**Fix**: Change `out = res` to `out = out + res`.
+
+**BUG Impact (if not fixed)**: The entire self-attention sublayer is dead — no attention information flows through the encoder. The model is effectively a conv-only network, severely limiting representational capacity.
+
+**FIX Impact (after fixed)**: Self-attention output is properly combined with the residual path, restoring the encoder's ability to model long-range dependencies.
 
 **Chief Reasoning**:
 - *chief_a*: Models/encoder.py lines 117-118: `out = self.self_att(out, mask)` then immediately `out = res`. The attention output is discarded and replaced by the residual. The attention sublayer contributes nothing. Fix: `out = out + res` (or `out = self.drop(out) + res`).
