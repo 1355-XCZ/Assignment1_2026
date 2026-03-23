@@ -1077,7 +1077,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-043: `Models/Initializations/xavier.py` L19
+### BUG-043 ✅: `Models/Initializations/xavier.py` L24
 
 | Field | Value |
 |-------|-------|
@@ -1086,13 +1086,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | initialization |
 | Assignment | Stage II - Task 5: Initialization |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: Xavier normal initialization variance is incorrect, leading to poor convergence.
 
 **Root Cause**: The formula uses fan_in * fan_out instead of fan_in + fan_out.
 
-**Fix**: Change fan_in * fan_out to fan_in + fan_out.
+**Fix**: Change `math.sqrt(2.0 / (fan_in * fan_out))` to `math.sqrt(2.0 / (fan_in + fan_out))` in `xavier_normal_`.
+
+**BUG Impact (if not fixed)**: For typical layer sizes (e.g., 128×128), `fan_in * fan_out = 16384` vs `fan_in + fan_out = 256`, making initial weights ~8× too small and causing severe vanishing gradients from the first forward pass.
+
+**FIX Impact (after fixed)**: Initialization follows Glorot (2010) with correct denominator `fan_in + fan_out`, producing appropriately scaled weights and enabling stable signal propagation.
 
 **Chief Reasoning**:
 - *chief_a*: Models/Initializations/xavier.py line 19: `std = gain * math.sqrt(2.0 / (fan_in * fan_out))`. Glorot (2010) uses fan_in + fan_out in the denominator, not fan_in * fan_out. This dramatically reduces the scale for typical layer sizes. Note: xavier_uniform_ at line 30 has the identical bug.
