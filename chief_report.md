@@ -1021,7 +1021,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-041: `Models/Initializations/kaiming.py` L20
+### BUG-041 ✅: `Models/Initializations/kaiming.py` L25
 
 | Field | Value |
 |-------|-------|
@@ -1030,13 +1030,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | initialization |
 | Assignment | Stage II - Task 5: Initialization |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: Kaiming normal initialization variance is too small by a factor of 2, leading to vanishing gradients.
 
 **Root Cause**: The formula uses 1.0 / fan instead of 2.0 / fan.
 
-**Fix**: Change 1.0 / fan to 2.0 / fan.
+**Fix**: Change `math.sqrt(1.0 / fan)` to `math.sqrt(2.0 / fan)` in `kaiming_normal_`.
+
+**BUG Impact (if not fixed)**: Initialization variance is halved relative to He (2015), causing signal attenuation through stacked ReLU layers and contributing to vanishing gradients in deep networks.
+
+**FIX Impact (after fixed)**: Variance follows the correct He formula `2/fan`, preserving signal magnitude through ReLU layers and enabling stable forward/backward propagation.
 
 **Chief Reasoning**:
 - *chief_a*: Models/Initializations/kaiming.py line 20: `std = math.sqrt(1.0 / fan)`. He (2015) formula for ReLU is sqrt(2/fan). The code uses 1/fan instead of 2/fan, halving the variance. This leads to signal attenuation in deep ReLU networks.

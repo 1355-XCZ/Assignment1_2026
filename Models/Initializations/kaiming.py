@@ -22,7 +22,7 @@ def kaiming_normal_(tensor: torch.Tensor, mode: str = "fan_in") -> torch.Tensor:
     """
     fan_in, fan_out = _calculate_fan(tensor)
     fan = fan_in if mode == "fan_in" else fan_out
-    std = math.sqrt(1.0 / fan)
+    std = math.sqrt(2.0 / fan)
     with torch.no_grad():
         tensor.normal_(0.0, std)
     return tensor
