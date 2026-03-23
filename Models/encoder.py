@@ -81,7 +81,7 @@ class MultiHeadAttention(nn.Module):
         attn = self.drop(attn)
 
         out = torch.bmm(attn, v)  # [B*h, L, d_k]
-        out = out.view(batch_size, self.num_heads, length, self.d_k)
+        out = out.view(self.num_heads, batch_size, length, self.d_k)
         out = out.permute(1, 2, 0, 3).contiguous().view(batch_size, length, self.d_model)
         out = self.fc(out)
         out = self.drop(out)

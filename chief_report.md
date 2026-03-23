@@ -1154,7 +1154,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-049: `Models/encoder.py` L61
+### BUG-049 ✅: `Models/encoder.py` L84
 
 | Field | Value |
 |-------|-------|
@@ -1163,13 +1163,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | attention |
 | Assignment | Stage II - Task 3: Attention Mechanism |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: The model mixes data across different batch elements, destroying batch independence and ruining gradients.
 
-**Root Cause**: The `permute(2, 0, 1, 3)` call creates an [H, B, L, d_k] layout, but the subsequent `view` operations assume a [B, H, L, d_k] layout, causing batch and head dimensions to be interleaved.
+**Root Cause**: The input `permute(2, 0, 1, 3)` creates H-major layout [H*B, L, d_k], but the output `view(batch_size, self.num_heads, ...)` assumes B-major layout, scrambling batch and head dimensions when reassembling the multi-head output.
 
-**Fix**: Use `permute(0, 2, 1, 3)` for q, k, and v, and `permute(0, 2, 1, 3)` for the output tensor before reshaping.
+**Fix**: Change the output view from `view(batch_size, self.num_heads, length, self.d_k)` to `view(self.num_heads, batch_size, length, self.d_k)`. This correctly interprets the H-major data as [H, B, L, d_k], and the existing `permute(1, 2, 0, 3)` then correctly produces [B, L, H, d_k]. The input permute and mask `repeat(H,1,1)` remain H-major and consistent with each other.
+
+**BUG Impact (if not fixed)**: For batch_size > 1, the multi-head attention output is completely scrambled — data from different batch elements and heads are mixed together, destroying the attention mechanism's contribution and making the model unable to learn meaningful attention patterns during training.
+
+**FIX Impact (after fixed)**: The output view correctly interprets the H-major layout as [H, B, L, d_k], and the subsequent permute produces valid [B, L, d_model] output, restoring correct multi-head attention reassembly and enabling the attention mechanism to learn.
 
 **Chief Reasoning**:
 - *chief_a*: Models/encoder.py line 61: `q.permute(2, 0, 1, 3)` on [B,L,H,d_k] produces [H,B,L,d_k], not [B,H,L,d_k]. After contiguous().view(B*H,L,d_k), the data is H-major. The attention computation itself happens to work (mask repeat is also H-major), BUT the output view(B,H,L,d_k) assumes B-major, scrambling batch and head dimensions. Output permute(1,2,0,3) is also wrong (should be (0,2,1,3)). Note: fixing input permute to (0,2,1,3) also requires fixing the mask expansion from repeat(H,1,1) to a B-major scheme.
