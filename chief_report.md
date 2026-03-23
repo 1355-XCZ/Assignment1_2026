@@ -574,27 +574,29 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-N001 ✅: `Schedulers/scheduler.py` L37
+### BUG-N001 ✅: `Schedulers/scheduler.py` L29
 
 | Field | Value |
 |-------|-------|
 | Stage | stage1 |
-| Severity | critical |
-| Category | lr_scheduler |
+| Severity | minor |
+| Category | lr_scheduler / serialization |
 | Assignment | Stage I - Task 2: Train/Eval Loop |
 | Confidence | high |
 | Status | ✅ Fixed |
 | Discovered by | manual testing |
 
-**Symptom**: Calling `train(scheduler_name="none", ...)` fails before training starts because the `"none"` scheduler option is not properly available in the scheduler path.
+**Symptom**: Checkpoint saving (`torch.save`) fails with `AttributeError: Can't pickle local object` when `lambda_scheduler` is active, because `LambdaLR` stores the anonymous `lambda _: 1.0` closure which is not serializable by `pickle`.
 
-**Root Cause**: The scheduler module did not provide a valid no-op scheduler factory for the `"none"` option in a way that `train.py` could reliably resolve and use, so scheduler selection failed for the notebook's vanilla configuration.
+**Root Cause**: The original `lambda_scheduler` passes an anonymous lambda (`lambda _: 1.0`) to `LambdaLR`. Python's `pickle` module (used internally by `torch.save`) cannot serialize anonymous/local functions.
 
-**Fix**: Defined a top-level `_constant_factor` function and used it in `none_scheduler(optimizer, args)` via `LambdaLR(..., lr_lambda=_constant_factor)`, so the `"none"` scheduler remains no-op while avoiding lambda serialization issues in checkpoint workflows.
+**Fix**: Replace the anonymous lambda with a module-level named function `_constant_factor`. Behavior is identical (constant factor 1.0), but now serializable.
 
-**BUG Impact (if not fixed)**: Training cannot proceed with the default notebook configuration (`scheduler_name="none"`). The run fails before optimizer/scheduler setup and before entering the training loop.
+**Rollback Note**: An earlier iteration of this fix also added a `"none"` scheduler to the registry. This has been rolled back — `"none"` was never a valid scheduler option in the original design. The registry retains only the original three entries: `cosine`, `step`, `lambda`. The correct way to achieve "no scheduling" is `scheduler_name="lambda"` (constant factor 1.0).
 
-**FIX Impact (after fixed)**: The `"none"` scheduler option is now available in the registry. Training proceeds past scheduler validation with a constant learning rate as intended by the vanilla recipe.
+**BUG Impact (if not fixed)**: Training runs that reach the checkpoint-save step crash during serialization. The training loop itself works, but no checkpoint is persisted.
+
+**FIX Impact (after fixed)**: `lambda_scheduler` is checkpoint-safe. `torch.save` succeeds without error when saving optimizer/scheduler state.
 
 ---
 
@@ -1835,59 +1837,32 @@ These `H-` items are not strict code-defect entries. They are used to document d
 
 ## Big Architectural Fixes
 
-### BUG-B001: `Optimizers/optimizer.py` L16 + `Schedulers/scheduler.py` L29
+### BUG-B001 ↩️ Rolled Back: `Optimizers/optimizer.py` L16 + `Schedulers/scheduler.py` L29
 
 | Field | Value |
 |-------|-------|
-| Stage | stage1&2 (default train.py config uses Adam + lambda, which produces lr=1.0 and causes loss explosion — blocks Stage I trainability; correct warmup schedule is a Stage II mechanism requirement) |
-| Severity | critical |
+| Stage | N/A (rolled back) |
+| Severity | N/A |
 | Category | optimizer / lr_scheduler |
 | Assignment | Stage I - Task 2: Train/Eval Loop & Stage II - Task 2: LR Scheduler |
-| Confidence | high |
-| Status | ✅ Fixed (reviewed) |
+| Confidence | N/A |
+| Status | ↩️ Rolled Back |
 | Discovered by | manual testing + internal ablation and configuration tracing |
 
-**Symptom**: When using the default `train.py` configuration (`optimizer_name="adam"`, `scheduler_name="lambda"`), the effective learning rate is 1.0 throughout training, causing immediate loss explosion (loss > 10²⁷) and preventing any meaningful learning.
+**Original Symptom**: When using `optimizer_name="adam"` with `scheduler_name="lambda"`, effective learning rate is 1.0 throughout training, causing loss explosion (loss > 10²⁷).
 
-**Root Cause**: Two coupled design errors create a broken default configuration:
+**Original Diagnosis (now revised)**: We previously diagnosed this as a coupled bug — Adam hardcoded `lr=1.0` while `lambda_scheduler` returned a constant 1.0 factor, yielding `effective_lr = 1.0 × 1.0 = 1.0`.
 
-1. **`Optimizers/optimizer.py` L16**: The `adam` factory hardcodes `lr=1.0`, ignoring `args.learning_rate` (0.001). The inline comment claims *"its learning rate is entirely controlled by the paired warmup_lambda scheduler"*, implying the scheduler should output actual lr values as multiplicative factors.
+**Why Rolled Back**: After cross-referencing with peer implementations and reviewing the original codebase design:
 
-2. **`Schedulers/scheduler.py` L29**: The `lambda_scheduler` factory returns `LambdaLR(optimizer, lr_lambda=_constant_factor)` where `_constant_factor` always returns 1.0. There is no warmup implementation — the scheduler does nothing.
+1. **Adam `lr=1.0` is intentional by design.** The original code comment explicitly states: *"adam sets lr=1.0 because its learning rate is entirely controlled by the paired warmup_lambda scheduler"*. The schedulers are pre-assigned to specific optimizers, and Adam is designed to be paired with `lambda` scheduler where the lr_lambda function outputs the actual effective learning rate as a multiplicative factor.
 
-Combined effect: `effective_lr = 1.0 (base) × 1.0 (factor) = 1.0`. Adam with lr=1.0 causes parameter updates to overshoot catastrophically, producing loss in the range of 10¹⁸–10²⁷.
+2. **`lambda_scheduler` being constant 1.0 is the actual (unfixed) bug.** The `lambda_scheduler` was supposed to implement a meaningful warmup schedule (as implied by the `"warmup_lambda"` name in the comment), but the original implementation is a stub that always returns 1.0. This is a Stage II scheduler mechanism bug, not an architectural design error.
 
-**Why This Is a Big Architectural Fix**: The original code path assumes Adam's learning rate is scheduler-driven (base lr=1.0, scheduler outputs meaningful scaling), but the active scheduler path is a constant-factor stub. This is not a one-line typo; it is a **missing piece in the optimizer–scheduler contract**. The fix requires a clear architecture decision about where the effective learning rate should be controlled.
+3. **Our previous fix changed the wrong layer.** We changed Adam's base lr and added warmup logic, but the correct approach is to keep Adam `lr=1.0` and fix the `lambda_scheduler` to output a proper lr schedule. This is a Stage II task, not a Stage I blocker.
 
-**Internal Validation Notes (submission-safe wording)**:
+**Rolled Back Changes**:
+- `Optimizers/optimizer.py`: Reverted Adam factory from `lr=args.learning_rate` back to `lr=1.0` (original design).
+- `Schedulers/scheduler.py`: Removed `_WarmupFactor` class, removed `none_scheduler`, removed `"none"` from registry. `lambda_scheduler` now uses `_constant_factor` (named function returning 1.0) — matching the original behavior but with serialization compatibility (see BUG-N001).
 
-Internal experiments and configuration tracing consistently indicate that a stable setup should satisfy:
-
-- Adam base learning rate should be configurable (default around `1e-3`) rather than fixed at `1.0`.
-- `lambda` scheduler should provide a meaningful warmup/scale curve, not a constant `1.0` factor.
-
-This directly matches observed behavior in this project: keeping `adam` at effective lr=1.0 causes extreme loss values, while configurable base lr with proper scaling restores trainability.
-
-**Fix Strategy — Changes to Original Architecture**:
-
-Two components were modified:
-
-1. **`Optimizers/optimizer.py`**: Change Adam factory from `lr=1.0` (hardcoded) to `lr=args.learning_rate` (configurable, default 0.001). This keeps optimizer behavior consistent with other optimizers and makes Adam compatible with any scheduler (`lambda`, `cosine`, `step`, `none`).
-
-   *Why*: The hardcoded `lr=1.0` assumed a scheduler design that was never implemented. Using `args.learning_rate` follows the standard PyTorch convention where the optimizer holds the base learning rate and the scheduler modulates it.
-
-2. **`Schedulers/scheduler.py`**: Replace the constant-factor `lambda_scheduler` with a non-trivial warmup implementation, e.g. logarithmic warmup:
-   `factor = (1/log(warmup)) × log(step+1)` during warmup, then `factor = 1.0` afterward. Recommended default warmup period: 1000 steps.
-
-   **Engineering constraint (checkpoint compatibility)**: The warmup callable must be serializable (picklable) for checkpoint save/load flows. Use a top-level callable object/function (e.g., a module-level class implementing `__call__`) instead of a local closure.
-
-   *Why*: Warmup reduces early-step instability when gradients are still volatile in randomly initialized models, improving the probability of stable convergence.
-
-**BUG Impact (if not fixed)**: The default training configuration (`optimizer_name="adam"`, `scheduler_name="lambda"`) produces lr=1.0, causing immediate loss explosion. Users must manually override to SGD + none to achieve any training, which defeats the purpose of providing Adam as the default optimizer.
-
-**FIX Impact (after fixed)**: The default configuration can produce a stable training curve (warmup to target lr, then steady updates) instead of immediate loss explosion. Optimizer–scheduler interaction becomes explicit and consistent with assignment expectations for functional and trainable pipelines.
-
-**Review Result**: ✅ The architectural fix set was verified in code:
-- `Optimizers/optimizer.py`: Adam now uses `lr=args.learning_rate`.
-- `Schedulers/scheduler.py`: `lambda_scheduler` now uses a warmup function instead of a constant 1.0 factor.
-- `Schedulers/scheduler.py`: warmup is implemented via a top-level callable (`_WarmupFactor`), which is checkpoint-serialization safe.
+**Current State**: Adam + lambda produces lr=1.0 (loss explosion). This is expected at this stage. The `lambda_scheduler` warmup implementation is a **Stage II task** that will restore proper Adam training behavior.
