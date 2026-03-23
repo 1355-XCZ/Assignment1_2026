@@ -1565,7 +1565,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-064: `Models/qanet.py` L46
+### BUG-064 ✅: `Models/qanet.py` L43
 
 | Field | Value |
 |-------|-------|
@@ -1574,13 +1574,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | embedding |
 | Assignment | Stage II - Task 7: Embedding |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] |
 
 **Symptom**: GloVe word embeddings are fine-tuned during training instead of being frozen, degrading generalization.
 
 **Root Cause**: nn.Embedding.from_pretrained for word_emb uses freeze=False instead of freeze=True.
 
-**Fix**: Change freeze=False to freeze=True for word_emb.
+**Fix**: Change `freeze=False` to `freeze=True` for word_emb.
+
+**BUG Impact (if not fixed)**: Pre-trained GloVe representations drift during training, causing overfitting on the relatively small SQuAD dataset and degrading generalization to unseen examples.
+
+**FIX Impact (after fixed)**: Word embeddings remain frozen at pre-trained values, preserving generalization and matching the QANet paper configuration.
 
 **Chief Reasoning**:
 - *chief_a*: Models/qanet.py line 46: `nn.Embedding.from_pretrained(word_mat, freeze=False)`. The original QANet paper freezes GloVe word embeddings to prevent catastrophic forgetting of pretrained representations. freeze=False allows fine-tuning, degrading generalization especially with small datasets.

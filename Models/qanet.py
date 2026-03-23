@@ -40,7 +40,7 @@ class QANet(nn.Module):
         )
         self.word_emb = nn.Embedding.from_pretrained(
             torch.tensor(word_mat, dtype=torch.float32),
-            freeze=False
+            freeze=True
         )
 
         self.emb = Embedding(d_word, d_char, dropout, dropout_char, init_name=init_name, act_name=act_name)
