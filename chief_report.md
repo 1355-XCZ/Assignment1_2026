@@ -592,7 +592,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Root Cause**: (1) Anonymous lambda is not picklable. (2) The lambda function returns constant 1.0 instead of implementing the QANet paper's warmup schedule: `lr(t) = learning_rate × min(1, t / warmup_steps)`.
 
-**Fix**: Replace the anonymous lambda with a module-level picklable `_WarmupFactor` class that implements linear warmup then constant lr. Added `warmup_steps=1000` parameter to `train.py`. The effective lr schedule is now: linearly ramp from 0 to `learning_rate` (default 0.001) over `warmup_steps` (default 1000), then hold constant.
+**Fix**: Replace the anonymous lambda with a module-level picklable `_WarmupFactor` class that implements warmup then constant lr. Added `warmup_steps=1000` parameter to `train.py`. The effective lr schedule is now: inverse-exponential warmup from 0 to `learning_rate` (default 0.001) over `warmup_steps` (default 1000), then hold constant.
 
 **Rollback Note**: An earlier iteration added a `"none"` scheduler to the registry. This has been rolled back — `"none"` was never a valid scheduler option. The registry retains only `cosine`, `step`, `lambda`.
 
@@ -600,19 +600,21 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **FIX Impact (after fixed)**: `lambda_scheduler` is checkpoint-safe and implements the QANet paper's warmup schedule, enabling stable Adam training with the default configuration.
 
-> **⚠️ Warning: Warmup Curve Shape Difference vs Reference Implementations**
+> **✅ Warmup Curve Shape — Updated to Inverse Exponential (Log)**
 >
-> Our implementation uses **linear warmup** (`lr = target_lr × step / warmup_steps`), which matches the QANet paper's description: *"linearly from 0 to 0.001 in the first 1000 steps"*.
+> ~~Our original fix used **linear warmup** (`lr = target_lr × step / warmup_steps`).~~
 >
-> However, three widely-used reference implementations (`QANet-localminimum`, `QANet-NLPLearn`, `QANet-BangLiu`) all use **logarithmic warmup** instead: `lr_lambda = (1 / log(W)) × log(step + 1)`, where W = warmup_steps. This is a concave curve that rises much faster initially — at step 100, log warmup reaches ~67% of target lr, while linear warmup only reaches 10%.
+> Updated to match all three reference implementations (`QANet-localminimum`, `QANet-NLPLearn`, `QANet-BangLiu`) which use **inverse-exponential (logarithmic) warmup**: `lr(t) = learning_rate × log(t + 1) / log(W)`, where W = warmup_steps. This is a concave curve that rises much faster initially:
 >
-> | step | Log warmup (references) | Linear warmup (ours) |
-> |------|------------------------|---------------------|
+> | step | Log warmup (current) | Linear warmup (old) |
+> |------|---------------------|---------------------|
 > | 100 | 0.000669 (66.9%) | 0.000100 (10.0%) |
 > | 500 | 0.000900 (90.0%) | 0.000500 (50.0%) |
 > | 999 | 0.001000 (100%) | 0.000999 (99.9%) |
 >
-> Both converge to the same constant lr after warmup. Our linear warmup is faithful to the paper; the log warmup is an engineering variant that may converge faster in practice due to earlier access to higher learning rates. If training convergence is too slow in early steps, consider switching to the logarithmic schedule used by reference implementations.
+> Reference code:
+> - localminimum/NLPLearn: `lr = min(0.001, 0.001 / log(999) * log(step + 1))`
+> - BangLiu: `cr = 1/log(W); factor = cr * log(step+1) if step < W else 1`
 
 ---
 
