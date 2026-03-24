@@ -1441,6 +1441,32 @@ Our `cq_resizer` was implemented as `DepthwiseSeparableConv(d_model * 4, d_model
 
 ---
 
+### BUG-N011 ✅ [Inconsistency]: `EvaluateTools/eval_utils.py` L107-113
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | medium |
+| Category | inference |
+| Assignment | Stage I - Task 4: Output Layer |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 5, "Output Layer — Inference") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Inference span selection may produce suboptimal or incorrect answer spans.
+
+**Root Cause**: The paper (Section 5) states: "At inference time, the predicted span (s, e) is chosen such that p¹_s p²_e is maximized and s ≤ e." This requires a joint optimization via outer product of start and end probabilities. Our implementation used independent argmax on start and end positions, then min/max swap to enforce ordering — this finds (argmax p¹, argmax p²) and swaps if out of order, rather than jointly maximizing p¹_s × p²_e. Reference implementations confirm the outer product approach:
+- BangLiu: `outer = torch.matmul(p1.unsqueeze(2), p2.unsqueeze(1))` + `torch.triu` + argmax
+- localminimum/NLPLearn: `outer = tf.matmul(softmax(logits1), softmax(logits2))` + `matrix_band_part` + argmax
+
+**Fix**: Replaced independent argmax + min/max swap with joint outer product decoding: compute `outer[s,e] = p1_s + p2_e` in log-space, mask to upper triangular (s ≤ e), then find the (s, e) that maximizes the joint score.
+
+**BUG Impact (if not fixed)**: When start > end from independent argmax, the swap produces a span where neither position was optimal for its role. Example: if argmax(p1)=10, argmax(p2)=5, the swap gives span (5,10) but p1 at position 5 and p2 at position 10 may both be low.
+
+**FIX Impact (after fixed)**: Inference now jointly maximizes p¹_s × p²_e subject to s ≤ e, matching the paper and all reference implementations.
+
+---
+
 ### BUG-056 ✅: `Schedulers/cosine_scheduler.py` L28
 
 | Field | Value |
