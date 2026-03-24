@@ -1386,6 +1386,32 @@ The paper (Figure 1 caption) explicitly states: **"We also share weights of the 
 
 ---
 
+### BUG-N009 ✅ [Inconsistency]: `Models/qanet.py` L47
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | minor |
+| Category | model_architecture |
+| Assignment | Stage I - Task 4: Model Architecture |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 2, "Embedding Encoder Layer") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Projection layer from embedding dimension (p₁+p₂) to d_model uses a more complex convolution than necessary, deviating from paper specification.
+
+**Root Cause**: The paper (Section 2) states: "the input of this layer is a vector of dimension p₁ + p₂ = 500 ... which is immediately mapped to d = 128 by **a one-dimensional convolution**". The paper deliberately distinguishes this regular 1D convolution from the "depthwise separable convolutions" used inside encoder blocks. However, our `proj_conv` was implemented as `DepthwiseSeparableConv(d_word + d_char, d_model, 5)` — a depthwise separable conv with kernel size 5 instead of a standard Conv1d. All three reference implementations use a regular Conv1d with kernel size 1 for this projection:
+- BangLiu: `Initialized_Conv1d(wemb_dim + d_model, d_model, bias=False)` (kernel=1)
+- localminimum / NLPLearn: `conv(inputs, d, name="input_projection")` (kernel=1)
+
+**Fix**: Replaced `DepthwiseSeparableConv(d_word + d_char, d_model, 5)` with `Conv1d(d_word + d_char, d_model, 1)` — a standard 1D convolution with kernel size 1, matching the paper and all reference implementations.
+
+**BUG Impact (if not fixed)**: Unnecessary parameters and computation in the projection layer; deviates from paper's explicit specification of "a one-dimensional convolution".
+
+**FIX Impact (after fixed)**: Projection layer matches paper and reference implementations exactly — a simple linear channel projection via Conv1d(kernel=1).
+
+---
+
 ### BUG-056 ✅: `Schedulers/cosine_scheduler.py` L28
 
 | Field | Value |

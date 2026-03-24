@@ -3,7 +3,8 @@ import copy
 import torch
 import torch.nn as nn
 
-from .conv import DepthwiseSeparableConv
+from .conv import Conv1d, DepthwiseSeparableConv
+from .Initializations import initializations, constant_
 from .embedding import Embedding
 from .encoder import EncoderBlock
 from .attention import CQAttention
@@ -44,7 +45,10 @@ class QANet(nn.Module):
         )
 
         self.emb = Embedding(d_word, d_char, dropout, dropout_char, init_name=init_name, act_name=act_name)
-        self.proj_conv = DepthwiseSeparableConv(d_word + d_char, d_model, 5, init_name=init_name)
+        # [OLD] DepthwiseSeparableConv(d_word + d_char, d_model, 5)
+        # [FIX] Paper Section 2: "mapped to d by a one-dimensional convolution" — use Conv1d(k=1)
+        self.proj_conv = Conv1d(d_word + d_char, d_model, kernel_size=1, bias=False)
+        initializations[init_name](self.proj_conv.weight)
 
         self.emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=max(len_c, len_q), init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
 
