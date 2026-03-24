@@ -74,22 +74,29 @@ class QANet(nn.Module):
         C = self.proj_conv(C)
         Q = self.proj_conv(Q)
 
-        Ce = self.emb_enc(C, cmask)
-        Qe = self.emb_enc(Q, qmask)
+        # Embedding encoder: 1 block, (4 conv + 1 attn + 1 ffn) = 6 sublayers
+        emb_total = self.emb_enc.conv_num + 2
+        Ce = self.emb_enc(C, cmask, l=1, total_layers=emb_total)
+        Qe = self.emb_enc(Q, qmask, l=1, total_layers=emb_total)
 
         X = self.cq_att(Ce, Qe, cmask, qmask)
 
+        # Model encoder: 7 blocks, each (2 conv + 1 attn + 1 ffn) = 4 sublayers, total = 28
+        num_model_blks = len(self.model_enc_blks)
+        sublayers_per_blk = self.model_enc_blks[0].conv_num + 2
+        model_total = sublayers_per_blk * num_model_blks
+
         M1 = self.cq_resizer(X)
-        for enc in self.model_enc_blks:
-            M1 = enc(M1, cmask)
+        for i, enc in enumerate(self.model_enc_blks):
+            M1 = enc(M1, cmask, l=i * sublayers_per_blk + 1, total_layers=model_total)
 
         M2 = M1
-        for enc in self.model_enc_blks:
-            M2 = enc(M2, cmask)
+        for i, enc in enumerate(self.model_enc_blks):
+            M2 = enc(M2, cmask, l=i * sublayers_per_blk + 1, total_layers=model_total)
 
         M3 = M2
-        for enc in self.model_enc_blks:
-            M3 = enc(M3, cmask)
+        for i, enc in enumerate(self.model_enc_blks):
+            M3 = enc(M3, cmask, l=i * sublayers_per_blk + 1, total_layers=model_total)
 
         p1, p2 = self.out(M1, M2, M3, cmask)
         return p1, p2

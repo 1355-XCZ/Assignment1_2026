@@ -1443,6 +1443,48 @@ Our `cq_resizer` was implemented as `DepthwiseSeparableConv(d_model * 4, d_model
 
 ---
 
+### BUG-N012 ✅ [Inconsistency]: `Models/encoder.py` EncoderBlock — Stochastic Depth
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | medium |
+| Category | regularization / training |
+| Assignment | Stage I - Task 2: Encoder Blocks |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 4.1, "stochastic depth") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Regularization mechanism not matching the paper's stochastic depth specification; training stability and generalization may be impacted.
+
+**Root Cause**: The paper (Section 4.1) states: *"We also use the stochastic depth method (layer dropout) within each embedding or model encoder layer, where sublayer l has survival probability p_l = 1 − (l/L)(1 − p_L) where L is the last layer and p_L = 0.9."* This requires:
+1. **Layer dropout** (entire sublayer skipped or kept), not element-wise dropout
+2. Applied to **all sublayers** (conv, self-attention, FFN)
+3. **Global sublayer indexing** across all blocks: drop prob = `dropout × l / L`, L = `(conv_num + 2) × num_blocks`
+
+Our implementation had multiple issues:
+- Used element-wise `Dropout` (drops individual neurons, not entire sublayers)
+- Only applied to convolution sublayers — self-attention and FFN had only regular dropout
+- Only applied every 2nd conv (`if (i+1) % 2 == 0`)
+- Used `L = conv_num` (local) instead of global total sublayers
+
+Reference implementations confirmed:
+- localminimum: `layer_dropout(inputs, residual, dropout * l / L)` for all sublayers, `L = (num_conv_layers + 2) * num_blocks`
+- BangLiu: `self.layer_dropout(out, res, dropout * l / total_layers)` for all sublayers, passed `l` and `blks` from model level
+- Both: layer dropout = with prob p skip entire sublayer (return residual), else `F.dropout(inputs, p) + residual`
+
+**Fix**:
+- `Models/encoder.py`: Replaced `conv_drops` (element-wise Dropout) with `_layer_dropout()` method that either skips the entire sublayer (returns residual) or applies `F.dropout(inputs, p) + residual`. Applied to ALL sublayers (conv, self-attention, FFN). Renamed norms to `norm_c`, `norm_a`, `norm_f` for clarity.
+- `Models/qanet.py`: Pass `l` (starting sublayer index) and `total_layers` to each `EncoderBlock.forward()`:
+  - Embedding encoder: `l=1`, `total_layers=6` (4 conv + 1 attn + 1 FFN)
+  - Model encoder: `l=i*4+1`, `total_layers=28` (7 blocks × 4 sublayers)
+
+**BUG Impact (if not fixed)**: Suboptimal regularization — stochastic depth provides an important form of structural dropout that makes deeper encoder blocks more robust. Without it, the 7-block model encoder may overfit or fail to train stably.
+
+**FIX Impact (after fixed)**: Stochastic depth now matches the paper and all reference implementations — linearly increasing drop probability across all sublayers, with proper layer-level skip/keep semantics.
+
+---
+
 ### BUG-N011 ✅ [Inconsistency]: `EvaluateTools/eval_utils.py` L107-113
 
 | Field | Value |
