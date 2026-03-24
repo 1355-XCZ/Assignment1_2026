@@ -53,7 +53,10 @@ class QANet(nn.Module):
         self.emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=max(len_c, len_q), init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
 
         self.cq_att = CQAttention(d_model, dropout)
-        self.cq_resizer = DepthwiseSeparableConv(d_model * 4, d_model, 5, init_name=init_name)
+        # [OLD] DepthwiseSeparableConv(d_model * 4, d_model, 5)
+        # [FIX] Paper Section 4: input [c,a,c⊙a,c⊙b] projected to d_model — use Conv1d(k=1)
+        self.cq_resizer = Conv1d(d_model * 4, d_model, kernel_size=1, bias=False)
+        initializations[init_name](self.cq_resizer.weight)
 
         base_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=2, k=5, length=len_c, init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
         self.model_enc_blks = nn.ModuleList([copy.deepcopy(base_enc) for _ in range(7)])

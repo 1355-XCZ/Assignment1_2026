@@ -1412,6 +1412,35 @@ The paper (Figure 1 caption) explicitly states: **"We also share weights of the 
 
 ---
 
+### BUG-N010 ✅ [Inconsistency]: `Models/qanet.py` L56
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | minor |
+| Category | model_architecture |
+| Assignment | Stage I - Task 4: Model Architecture |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 4, "Model Encoder Layer") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Model Encoder Layer input projection (4×d_model → d_model) uses DepthwiseSeparableConv(k=5) instead of a standard Conv1d(k=1).
+
+**Root Cause**: The paper (Section 4) states: "the input of this layer at each position is [c, a, c ⊙ a, c ⊙ b]". This 4×d_model input must be projected back to d_model before entering the encoder blocks. The paper does not explicitly specify the projection type, but all three reference implementations use a standard Conv1d with kernel_size=1:
+- BangLiu: `Initialized_Conv1d(d_model * 4, d_model)` (default kernel_size=1)
+- localminimum: `conv(inputs, d, name="input_projection")` (default kernel_size=1)
+- NLPLearn: identical to localminimum
+
+Our `cq_resizer` was implemented as `DepthwiseSeparableConv(d_model * 4, d_model, 5)`, deviating from all reference implementations. Same class of issue as BUG-N009.
+
+**Fix**: Replaced `DepthwiseSeparableConv(d_model * 4, d_model, 5)` with `Conv1d(d_model * 4, d_model, kernel_size=1, bias=False)`.
+
+**BUG Impact (if not fixed)**: Unnecessary parameters and contextual mixing in a dimension-projection layer; inconsistent with all reference implementations.
+
+**FIX Impact (after fixed)**: Model Encoder input projection matches all reference implementations — a simple pointwise projection via Conv1d(kernel=1).
+
+---
+
 ### BUG-056 ✅: `Schedulers/cosine_scheduler.py` L28
 
 | Field | Value |
