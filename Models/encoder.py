@@ -101,7 +101,8 @@ class EncoderBlock(nn.Module):
         self.pos = PosEncoder(d_model, length)
         self.act = get_activation(act_name)
 
-        # Normalization over [C, L]; fixed length required for layer_norm.
+        # [OLD] Normalization over [C, L]; fixed length required for layer_norm.
+        # [FIX] Normalization: LayerNorm over C (channel-only); GroupNorm over [C/G, L].
         self.normb = get_norm(norm_name, d_model, length, num_groups=norm_groups)
         self.norms = nn.ModuleList([get_norm(norm_name, d_model, length, num_groups=norm_groups) for _ in range(conv_num)])
         self.norme = get_norm(norm_name, d_model, length, num_groups=norm_groups)

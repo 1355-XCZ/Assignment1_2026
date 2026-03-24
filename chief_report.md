@@ -1354,6 +1354,38 @@ For Adam, the 0.5 is absorbed by its adaptive `m_hat / sqrt(v_hat)` normalizatio
 
 ---
 
+### BUG-N008 ✅ [Inconsistency]: `Models/Normalizations/normalization.py` L38 + `Models/qanet.py` L47-51
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | major |
+| Category | normalization / weight_sharing |
+| Assignment | Stage I - Task 3: Normalization + Model Architecture |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Figure 1) + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Context and question embedding encoders and projection layers use independent (unshared) weights, doubling parameter count and preventing the model from learning a unified context/question representation.
+
+**Root Cause (causal chain)**:
+
+1. **Root — LayerNorm normalizes over wrong dimensions**: The paper states "We use layernorm" (Figure 1 caption), referring to standard Layer Normalization (Ba et al., 2016), which by definition normalizes over the **feature dimension only**. However, `get_norm("layer_norm", d_model, length)` created `LayerNorm([d_model, length])`, normalizing over both [C, L] dims — this is closer to Instance Normalization, **not** the standard layernorm the paper specifies. Parameter shapes were `weight=[96, 400]` (context) / `[96, 50]` (question), depending on sequence length. The correct implementation (matching the paper and all three reference implementations) is `LayerNorm(d_model)`, normalizing over the channel dimension only, with parameter shape `[96]` independent of sequence length.
+2. **Consequence ① — EncoderBlock cannot be shared**: Because LayerNorm parameter shapes differ between context (length=400) and question (length=50), the embedding encoder was forced into two separate instances `c_emb_enc` / `q_emb_enc`.
+3. **Consequence ② — Projection layer cannot be shared**: For the same reason, projection convolutions were split into `context_conv` / `question_conv`.
+
+The paper (Figure 1 caption) explicitly states: **"We also share weights of the context and question encoder"**. All three reference implementations share weights.
+
+**Fix**:
+1. `normalization.py`: Added `_ChannelFirstLayerNorm` wrapper class that transposes [B,C,L] input to [B,L,C], applies `LayerNorm(d_model)` over the channel dimension, then transposes back. `get_norm` now returns this wrapper for `"layer_norm"`.
+2. `qanet.py`: Merged `context_conv` + `question_conv` → single shared `proj_conv`; merged `c_emb_enc` + `q_emb_enc` → single shared `emb_enc`. In forward, both context and question pass through the same instances.
+
+**BUG Impact (if not fixed)**: Doubled parameter count (two encoder blocks + two projection layers), violates paper's weight-sharing design, model cannot learn a unified context/question feature extractor.
+
+**FIX Impact (after fixed)**: Reduced parameter count, consistent with paper and all reference implementations, context and question share a single feature extraction pathway.
+
+---
+
 ### BUG-056 ✅: `Schedulers/cosine_scheduler.py` L28
 
 | Field | Value |

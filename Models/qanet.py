@@ -44,11 +44,9 @@ class QANet(nn.Module):
         )
 
         self.emb = Embedding(d_word, d_char, dropout, dropout_char, init_name=init_name, act_name=act_name)
-        self.context_conv = DepthwiseSeparableConv(d_word + d_char, d_model, 5, init_name=init_name)
-        self.question_conv = DepthwiseSeparableConv(d_word + d_char, d_model, 5, init_name=init_name)
+        self.proj_conv = DepthwiseSeparableConv(d_word + d_char, d_model, 5, init_name=init_name)
 
-        self.c_emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=len_c, init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
-        self.q_emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=len_q, init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
+        self.emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=max(len_c, len_q), init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
 
         self.cq_att = CQAttention(d_model, dropout)
         self.cq_resizer = DepthwiseSeparableConv(d_model * 4, d_model, 5, init_name=init_name)
@@ -66,11 +64,11 @@ class QANet(nn.Module):
         Qw, Qc = self.word_emb(Qwid), self.char_emb(Qcid)
 
         C, Q = self.emb(Cc, Cw), self.emb(Qc, Qw)
-        C = self.context_conv(C)
-        Q = self.question_conv(Q)
+        C = self.proj_conv(C)
+        Q = self.proj_conv(Q)
 
-        Ce = self.c_emb_enc(C, cmask)
-        Qe = self.q_emb_enc(Q, qmask)
+        Ce = self.emb_enc(C, cmask)
+        Qe = self.emb_enc(Q, qmask)
 
         X = self.cq_att(Ce, Qe, cmask, qmask)
 
