@@ -191,15 +191,17 @@ def train(
         dev_f1 = dv_metrics["f1"]
         dev_em = dv_metrics["exact_match"]
 
-        if dev_f1 > best_f1 or dev_em > best_em:
-            patience = 0
-            best_f1  = max(best_f1, dev_f1)
-            best_em  = max(best_em, dev_em)
-        else:
+        # [OLD] patience++ when f1 <= best AND em <= best (too strict, equal counts as decline)
+        # [FIX] Match reference impls: patience++ only when BOTH strictly decline
+        if dev_f1 < best_f1 and dev_em < best_em:
             patience += 1
             if patience > early_stop:
                 print("Early stopping triggered.")
                 break
+        else:
+            patience = 0
+            best_f1  = max(best_f1, dev_f1)
+            best_em  = max(best_em, dev_em)
 
         save_checkpoint(
             save_dir, ckpt_name, model, optimizer, scheduler,
