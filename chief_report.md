@@ -1509,7 +1509,35 @@ Reference implementations confirmed:
 
 **FIX Impact (after fixed)**: Inference now jointly maximizes p¹_s × p²_e subject to s ≤ e, matching the paper and all reference implementations.
 
+---
 
+### BUG-N013 ✅ [Inconsistency]: `Models/embedding.py` L27-50 — Character Embedding Cross-Word Leakage
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | major |
+| Category | architecture / embedding |
+| Assignment | Stage II - Task 1: Input Embedding Layer |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 2, "Input Embedding Layer") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: The character embedding path applies a 2D depthwise-separable convolution (kernel 5×5) over tensor `[B, d_char, L, char_len]`, where L is the token position axis and char_len is the character position axis. The 5×5 kernel convolves over both dimensions simultaneously, causing character representations of word `i` to incorporate information from neighboring words `i-2 ... i+2`. This cross-word leakage violates the QANet paper's per-word character encoder design.
+
+**Root Cause**: `Embedding.__init__` creates `DepthwiseSeparableConv(d_char, d_char, 5, dim=2)` — a 2D conv that operates over both spatial dimensions (token position L and character position char_len). The paper and all reference implementations process characters per-word in isolation.
+
+Reference implementations confirmed:
+- localminimum / NLPLearn: `tf.reshape(ch_emb, [N*PL, CL, dc])` → 1D `conv(k=5)` → `tf.reduce_max(axis=1)` → reshape back. Characters are reshaped to `[B*L, char_len, d_char]` so the conv is strictly per-word.
+- BangLiu: `nn.Conv2d(cemb_dim, d_model, kernel_size=(1, 5))` — kernel height=1 means no mixing across token positions; only convolves over char_len.
+
+**Fix**:
+- Changed `self.conv2d = DepthwiseSeparableConv(d_char, d_char, 5, dim=2)` → `self.char_conv = DepthwiseSeparableConv(d_char, d_char, 5, dim=1)` (1D conv).
+- In `forward`, reshape `ch_emb` from `[B, L, char_len, d_char]` to `[B*L, d_char, char_len]` (per-word isolation), apply 1D conv + activation, max-pool over `char_len` (dim=2), then reshape back to `[B, d_char, L]`.
+
+**BUG Impact (if not fixed)**: Character representations leak information across neighboring words, violating the paper's per-word encoder design. This may allow the model to "cheat" during training by using adjacent word context in the character path, degrading generalization.
+
+**FIX Impact (after fixed)**: Each word's character-level representation is computed independently — matching the paper and all three reference implementations.
 
 ---
 
