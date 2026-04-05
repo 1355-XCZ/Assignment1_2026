@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 def train_single_epoch(model, optimizer, scheduler, data_iter,
                        steps, grad_clip, loss_fn, device,
-                       global_step: int = 0) -> float:
+                       global_step: int = 0, ema=None) -> float:
     """
     Run one block of `steps` training iterations consuming from `data_iter`.
     Returns the mean loss over this block.
@@ -19,7 +19,7 @@ def train_single_epoch(model, optimizer, scheduler, data_iter,
     model.train()
     loss_list = []
 
-    for _ in tqdm(range(steps), total=steps):
+    for i in tqdm(range(steps), total=steps):
         optimizer.zero_grad(set_to_none=True)
 
         Cwid, Ccid, Qwid, Qcid, y1, y2, _ = next(data_iter)
@@ -35,6 +35,9 @@ def train_single_epoch(model, optimizer, scheduler, data_iter,
         torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
         scheduler.step()
+
+        if ema is not None:
+            ema.update(model, global_step + i)
 
     mean_loss = float(np.mean(loss_list))
     print(f"STEP {global_step + steps:8d}  loss {mean_loss:8f}\n")

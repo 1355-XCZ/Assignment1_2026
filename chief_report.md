@@ -1605,8 +1605,30 @@ Reference implementations confirmed:
 
 **FIX Impact (after fixed)**: Both `qa_nll` and `qa_ce` loss paths are correct and mathematically equivalent. Model output is raw logits, matching all reference implementations.
 
+---
 
-**FIX Impact (after fixed)**: Early stopping now only triggers when both F1 and EM strictly decline simultaneously, matching all reference implementations. Plateau periods no longer count as regression.
+### BUG-N017 ✅ [Missing Feature]: `TrainTools/train.py` — No Exponential Moving Average (EMA)
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | moderate |
+| Category | training loop / regularization |
+| Assignment | Stage I - Training Loop |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | external review (QANET_Final_Verdict A5) + reference implementation comparison |
+
+**Symptom**: The paper states "We also apply exponential moving average on all trainable variables with a decay rate of 0.9999." No EMA was present in the training or evaluation path.
+
+**Root Cause**: EMA was never implemented. All three reference implementations include EMA: NLPLearn/localminimum use `tf.train.ExponentialMovingAverage(0.9999)`, BangLiu uses a custom `EMA` class with optional `--use_ema` flag.
+
+**Fix**: Added `TrainTools/ema.py` with `EMA` class (register, update, assign, resume — following BangLiu's design). Integrated into `train.py`: new `ema_decay=0.9999` parameter, EMA update after every optimizer step, EMA weights assigned before evaluation and checkpoint saving, resumed after. `train_single_epoch` in `train_utils.py` now accepts optional `ema` parameter.
+
+**BUG Impact (if not fixed)**: Model evaluation uses raw training weights instead of smoothed EMA weights, typically resulting in 1-2 F1 points lower than achievable.
+
+**FIX Impact (after fixed)**: EMA-smoothed weights are used for all evaluation and saved checkpoints, matching the paper and all three reference implementations.
+
 
 ---
 

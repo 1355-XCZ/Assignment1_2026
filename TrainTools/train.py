@@ -21,6 +21,7 @@ from Schedulers import schedulers
 from Tools import set_seed
 from EvaluateTools.eval_utils import run_eval
 from TrainTools.train_utils import train_single_epoch, save_checkpoint
+from TrainTools.ema import EMA
 
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -79,6 +80,9 @@ def train(
     dropout:            float = 0.1,
     dropout_char:       float = 0.05,
     pretrained_char:    bool  = False,
+
+    # ── EMA ────────────────────────────────────────────────────────────────────
+    ema_decay:          float = 0.9999, # 0 to disable; paper uses 0.9999
 
     # ── Stubs for bug-injection phase ─────────────────────────────────────────
     use_batch_norm:     bool  = False,
@@ -144,6 +148,11 @@ def train(
     scheduler = schedulers[scheduler_name](optimizer, args)
     loss_fn   = losses[loss_name]
 
+    ema = None
+    if ema_decay > 0:
+        ema = EMA(ema_decay)
+        ema.register(model)
+
     best_f1  = 0.0
     best_em  = 0.0
     patience = 0
@@ -155,8 +164,11 @@ def train(
         train_loss = train_single_epoch(
             model, optimizer, scheduler, _train_iter,
             steps_this_block, grad_clip, loss_fn, DEVICE,
-            global_step=step0,
+            global_step=step0, ema=ema,
         )
+
+        if ema is not None:
+            ema.assign(model)
 
         tr_metrics, _ = run_eval(
             model, train_dataset, train_eval,
@@ -209,6 +221,9 @@ def train(
             step0 + steps_this_block, best_f1, best_em, vars(args),
             is_best=is_best,
         )
+
+        if ema is not None:
+            ema.resume(model)
 
         with open(os.path.join(log_dir, "answers.json"), "w") as f:
             json.dump(ans, f)
