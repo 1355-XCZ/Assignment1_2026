@@ -1629,6 +1629,29 @@ Reference implementations confirmed:
 
 **FIX Impact (after fixed)**: EMA-smoothed weights are used for all evaluation and saved checkpoints, matching the paper and all three reference implementations.
 
+---
+
+### BUG-N018 ⚠️ [Warning]: `EvaluateTools/evaluate.py` — Does Not Restore Checkpoint Config
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | low (currently safe, risky if architecture params change) |
+| Category | evaluation / config |
+| Assignment | Stage II - Evaluation |
+| Confidence | high |
+| Status | ⚠️ Documented (not fixed) |
+| Discovered by | external review (QANET_Final_Verdict A3) + chief_report BUG-039/040 |
+
+**Symptom**: `evaluate()` rebuilds the model from function defaults and `getattr` fallbacks in `QANet.__init__`, not from the config saved in the checkpoint. If training used non-default architecture parameters (e.g. `norm_name="group_norm"`, `activation="gelu"`), evaluation silently constructs a different model.
+
+**Root Cause**: `evaluate.py` constructs `args` from its own parameter list, which lacks `norm_name`, `activation`, `init_name`, `norm_groups`. `QANet.__init__` uses `getattr(args, key, default)` to fill in missing values, masking the inconsistency.
+
+**Current Risk**: Low — all current training runs use default architecture parameters, so evaluate's defaults match. Risk increases if Stage 2 experiments change architecture params.
+
+**Recommended Fix** (not applied): Load `ckpt["config"]` before model construction and use it to override architecture-related fields in `args`. See chief_report BUG-039/040 for details.
+
+**Reference**: All three reference implementations (NLPLearn, localminimum, BangLiu) also do NOT load config from checkpoint during evaluation — they rely on runtime flags/args matching training. This is a shared design limitation, not unique to this repo.
 
 ---
 
