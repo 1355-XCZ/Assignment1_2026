@@ -191,8 +191,7 @@ def train(
         dev_f1 = dv_metrics["f1"]
         dev_em = dv_metrics["exact_match"]
 
-        # [OLD] patience++ when f1 <= best AND em <= best (too strict, equal counts as decline)
-        # [FIX] Match reference impls: patience++ only when BOTH strictly decline
+        is_best = False
         if dev_f1 < best_f1 and dev_em < best_em:
             patience += 1
             if patience > early_stop:
@@ -208,6 +207,7 @@ def train(
         save_checkpoint(
             save_dir, ckpt_name, model, optimizer, scheduler,
             step0 + steps_this_block, best_f1, best_em, vars(args),
+            is_best=is_best,
         )
 
         with open(os.path.join(log_dir, "answers.json"), "w") as f:

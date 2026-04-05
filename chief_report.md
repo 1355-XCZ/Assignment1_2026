@@ -1555,23 +1555,32 @@ Reference implementations confirmed:
 
 **Conclusion**: Verified via `git diff 99c1aec HEAD` that the early stopping logic was never modified from the original fork. The original condition `if dev_f1 < best_f1 and dev_em < best_em` is identical to all three reference implementations (localminimum, NLPLearn, BangLiu). BUG-070's proposed fix was never actually applied, and BUG-N014 (a "second fix" of BUG-070) had no real code change either. Both are false positives and invalidated.
 
+---
+
+### BUG-N015 ✅ [Design Flaw]: `TrainTools/train.py` L194-211 & `TrainTools/train_utils.py` L44-60 — Best Checkpoint Overwrite
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | major |
+| Category | training loop / checkpoint |
+| Assignment | Stage I - Training Loop |
 | Confidence | high |
 | Status | ✅ Fixed |
-| Discovered by | reference implementation comparison (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+| Discovered by | manual review + reference implementation comparison |
 
-**Symptom**: Early stopping triggers prematurely, especially with SGD where F1/EM metrics plateau for many checkpoints before improving.
+**Symptom**: Only `model.pt` is saved at each evaluation checkpoint, unconditionally overwriting the previous one. If the model overfits in later training, the best-performing checkpoint is permanently lost.
 
-**Root Cause**: The previous fix (BUG-070) inverted the original buggy condition but used `>` / `<=` thresholds: patience resets only when `dev_f1 > best_f1 or dev_em > best_em`. When both metrics are exactly equal (no improvement but no decline), patience still increments. All three reference implementations use strict less-than (`<`) — patience increments only when **both** metrics **strictly decline**.
+**Root Cause**: `save_checkpoint` writes to a single fixed filename with no mechanism to preserve the best model. The training loop does not track whether the current evaluation is a new best.
 
-Reference implementations confirmed (localminimum, NLPLearn, BangLiu — all identical):
-```python
-if dev_f1 < best_f1 and dev_em < best_em:
-    patience += 1
-else:
-    patience = 0
-```
+**Reference Implementations**: All three (localminimum, NLPLearn, BangLiu) maintain an `is_best` flag and save a separate `best.model` / `best.pt` whenever a new best is achieved.
 
-**Fix**: Changed to match all reference implementations: `if dev_f1 < best_f1 and dev_em < best_em: patience += 1` / `else: patience = 0; update bests`.
+**Fix**: Added `is_best` flag to `train.py` (set `True` when `dev_f1` or `dev_em` exceeds the running best) and an `is_best=False` parameter to `save_checkpoint` in `train_utils.py` that additionally saves `model_best.pt` when `True`.
+
+**BUG Impact (if not fixed)**: After overfitting, the best model is overwritten by worse checkpoints — final evaluation uses a suboptimal model.
+
+**FIX Impact (after fixed)**: Best model is always preserved in `model_best.pt`, matching all three reference implementations.
+
 
 **BUG Impact (if not fixed)**: Overly aggressive early stopping — metrics that plateau (common with SGD's slow convergence) cause patience to increment even when there's no actual regression. With `early_stop=10` and `checkpoint=200`, the model may stop after only 2000 steps of stagnation.
 

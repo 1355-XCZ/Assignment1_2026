@@ -42,8 +42,9 @@ def train_single_epoch(model, optimizer, scheduler, data_iter,
 
 
 def save_checkpoint(save_dir, ckpt_name, model, optimizer, scheduler,
-                    step, best_f1, best_em, config):
-    """Save model, optimizer, scheduler state to a checkpoint file."""
+                    step, best_f1, best_em, config, is_best=False):
+    """Save model, optimizer, scheduler state to a checkpoint file.
+    If is_best, also copy to model_best.pt so the best model is never overwritten."""
     os.makedirs(save_dir, exist_ok=True)
     payload = {
         "model_state":     model.state_dict(),
@@ -55,3 +56,5 @@ def save_checkpoint(save_dir, ckpt_name, model, optimizer, scheduler,
         "config":          config,
     }
     torch.save(payload, os.path.join(save_dir, ckpt_name))
+    if is_best:
+        torch.save(payload, os.path.join(save_dir, "model_best.pt"))
