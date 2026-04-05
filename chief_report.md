@@ -1581,8 +1581,30 @@ Reference implementations confirmed:
 
 **FIX Impact (after fixed)**: Best model is always preserved in `model_best.pt`, matching all three reference implementations.
 
+---
 
-**BUG Impact (if not fixed)**: Overly aggressive early stopping — metrics that plateau (common with SGD's slow convergence) cause patience to increment even when there's no actual regression. With `early_stop=10` and `checkpoint=200`, the model may stop after only 2000 steps of stagnation.
+### BUG-N016 ✅ [Design Flaw]: `Models/heads.py` L29-30 & `Losses/loss.py` — log_softmax Placement Makes qa_ce_loss Unusable
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | minor |
+| Category | loss function / output layer |
+| Assignment | Stage I - Loss Function |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | external review (QANET_Final_Verdict A7) + reference implementation comparison |
+
+**Symptom**: `qa_ce_loss` (`F.cross_entropy`) expects raw logits but the `Pointer` head returns `F.log_softmax` outputs. Using `qa_ce_loss` would apply `log_softmax` twice, producing incorrect gradients. Only `qa_nll_loss` was usable.
+
+**Root Cause**: `log_softmax` was baked into the model output layer (`heads.py`). All three reference implementations (BangLiu, NLPLearn, localminimum) output raw logits and pair them with `cross_entropy` / `softmax_cross_entropy_with_logits`.
+
+**Fix**: Removed `F.log_softmax` from `Pointer.forward` (now returns masked logits). Updated `qa_nll_loss` to apply `F.log_softmax` before `F.nll_loss`. Updated `eval_utils.py` to apply `log_softmax` before the joint outer product for span decoding. `qa_ce_loss` now works correctly without changes.
+
+**BUG Impact (if not fixed)**: `qa_ce_loss` path silently produces wrong loss values and gradients (double log_softmax). Only one of two registered loss functions is usable.
+
+**FIX Impact (after fixed)**: Both `qa_nll` and `qa_ce` loss paths are correct and mathematically equivalent. Model output is raw logits, matching all reference implementations.
+
 
 **FIX Impact (after fixed)**: Early stopping now only triggers when both F1 and EM strictly decline simultaneously, matching all reference implementations. Plateau periods no longer count as regression.
 

@@ -2,14 +2,12 @@ import torch.nn.functional as F
 
 
 def qa_nll_loss(p1, p2, y1, y2):
-    """Standard QA span loss.
-    Expects p1/p2 to be log-probabilities (output of log_softmax)."""
-    return F.nll_loss(p1, y1) + F.nll_loss(p2, y2)
+    """QA span loss: log_softmax + nll_loss. Expects raw logits."""
+    return F.nll_loss(F.log_softmax(p1, dim=1), y1) + F.nll_loss(F.log_softmax(p2, dim=1), y2)
 
 
 def qa_ce_loss(p1, p2, y1, y2):
-    """QA span loss using cross-entropy.
-    Expects p1/p2 to be raw logits (no softmax applied)."""
+    """QA span loss: cross_entropy (= log_softmax + nll_loss internally). Expects raw logits."""
     return F.cross_entropy(p1, y1) + F.cross_entropy(p2, y2)
 
 
