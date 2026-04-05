@@ -200,6 +200,8 @@ def train(
                 break
         else:
             patience = 0
+            if dev_f1 > best_f1 or dev_em > best_em:
+                is_best = True
             best_f1  = max(best_f1, dev_f1)
             best_em  = max(best_em, dev_em)
 

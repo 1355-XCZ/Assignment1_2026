@@ -1541,14 +1541,20 @@ Reference implementations confirmed:
 
 ---
 
-### BUG-N014 ✅ [Inconsistency]: `TrainTools/train.py` L194-202 — Early Stopping Stricter Than Reference
+### BUG-N014 ❌ [Invalidated]: `TrainTools/train.py` L194-202 — Early Stopping (False Positive)
 
 | Field | Value |
 |-------|-------|
 | Stage | stage2 |
-| Severity | minor |
+| Severity | — |
 | Category | training loop |
 | Assignment | Stage II - Task 4: Training Loop |
+| Confidence | — |
+| Status | ❌ Invalidated (false positive) |
+| Discovered by | reference implementation comparison |
+
+**Conclusion**: Verified via `git diff 99c1aec HEAD` that the early stopping logic was never modified from the original fork. The original condition `if dev_f1 < best_f1 and dev_em < best_em` is identical to all three reference implementations (localminimum, NLPLearn, BangLiu). BUG-070's proposed fix was never actually applied, and BUG-N014 (a "second fix" of BUG-070) had no real code change either. Both are false positives and invalidated.
+
 | Confidence | high |
 | Status | ✅ Fixed |
 | Discovered by | reference implementation comparison (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
@@ -1977,31 +1983,21 @@ else:
 
 ---
 
-### BUG-070 ✅: `TrainTools/train.py` L194
+### BUG-070 ❌ (Invalidated): `TrainTools/train.py` L194
 
 | Field | Value |
 |-------|-------|
 | Stage | stage2 |
-| Severity | major |
+| Severity | — |
 | Category | training_loop |
 | Assignment | Stage II - Task 2: Train/Eval Loop |
-| Confidence | high |
-| Status | ✅ Fixed |
+| Confidence | — |
+| Status | ❌ Invalidated (false positive) |
 | Discovered by | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] |
 
-**Symptom**: Early stopping almost never triggers: patience only increments when *both* F1 and EM are strictly worse than their respective bests, so any minor fluctuation in one metric resets patience indefinitely.
+**Original Claim**: The condition `if dev_f1 < best_f1 and dev_em < best_em` using `and` would make early stopping almost never trigger.
 
-**Root Cause**: The condition `if dev_f1 < best_f1 and dev_em < best_em` uses `and` (both must degrade) with strict `<` (ties don't count). The correct early-stop condition should be that *neither* metric improved.
-
-**Fix**: Restructure to check for improvement first: `if dev_f1 > best_f1 or dev_em > best_em: patience=0; update bests; else: patience+=1`.
-
-**BUG Impact (if not fixed)**: Early stopping is effectively disabled — patience almost never accumulates because any fluctuation in either metric resets it, wasting compute on stagnated training runs.
-
-**FIX Impact (after fixed)**: Early stopping triggers correctly when neither F1 nor EM improves for `early_stop` consecutive evaluations.
-
-**Chief Reasoning**:
-- *chief_a*: TrainTools/train.py line 148: `if dev_f1 < best_f1 and dev_em < best_em` requires BOTH metrics to strictly decline to increment patience. If either metric stays flat or improves even slightly, patience resets. This makes early stopping nearly impossible to trigger. Fix: use `or` or restructure to check for any improvement.
-- *chief_b*: TrainTools/train.py line ~148: `if dev_f1 < best_f1 and dev_em < best_em: patience += 1`. With 'and', patience only increments when BOTH metrics worsen. If either metric improves (or even ties at best), patience resets. Early stopping is effectively disabled since it's rare for both F1 and EM to simultaneously drop below their independent bests.
+**Invalidation Reason**: Verified via `git diff 99c1aec HEAD` that the proposed fix was never applied — the code was never modified from the fork. The original condition is identical to all three reference implementations (localminimum, NLPLearn, BangLiu) and does not constitute a bug. The original chief analysis was incorrect: `and` + `<` is the standard approach in all references. See also BUG-N014 (likewise invalidated).
 
 ---
 
