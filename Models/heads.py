@@ -24,8 +24,6 @@ class Pointer(nn.Module):
         X2 = torch.cat([M1, M3], dim=1)  # [B, 2C, L]
         Y1 = torch.matmul(self.w1, X1)  # [B, L]
         Y2 = torch.matmul(self.w2, X2)  # [B, L]
-        Y1 = mask_logits(Y1, mask)
-        Y2 = mask_logits(Y2, mask)
-        p1 = F.log_softmax(Y1, dim=1)
-        p2 = F.log_softmax(Y2, dim=1)
+        p1 = mask_logits(Y1, mask)
+        p2 = mask_logits(Y2, mask)
         return p1, p2

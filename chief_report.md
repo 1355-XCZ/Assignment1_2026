@@ -574,27 +574,47 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-N001 ✅: `Schedulers/scheduler.py` L37
+### BUG-N001 ✅: `Schedulers/scheduler.py` L29
 
 | Field | Value |
 |-------|-------|
-| Stage | stage1 |
+| Stage | stage1 + stage2 |
 | Severity | critical |
 | Category | lr_scheduler |
-| Assignment | Stage I - Task 2: Train/Eval Loop |
+| Assignment | Stage I serialization + Stage II warmup |
 | Confidence | high |
 | Status | ✅ Fixed |
 | Discovered by | manual testing |
 
-**Symptom**: Calling `train(scheduler_name="none", ...)` fails before training starts because the `"none"` scheduler option is not properly available in the scheduler path.
+**Symptom (Stage I)**: Checkpoint saving (`torch.save`) fails with `AttributeError: Can't pickle local object` when `lambda_scheduler` is active, because `LambdaLR` stores the anonymous `lambda _: 1.0` closure which is not serializable by `pickle`.
 
-**Root Cause**: The scheduler module did not provide a valid no-op scheduler factory for the `"none"` option in a way that `train.py` could reliably resolve and use, so scheduler selection failed for the notebook's vanilla configuration.
+**Symptom (Stage II)**: With `Adam(lr=1.0)` paired to `lambda_scheduler` returning constant 1.0, the effective learning rate is 1.0 — catastrophically high. The design intention (per `optimizer.py` comments) is that `lambda_scheduler` should output the actual lr values including warmup, but this was never implemented.
 
-**Fix**: Defined a top-level `_constant_factor` function and used it in `none_scheduler(optimizer, args)` via `LambdaLR(..., lr_lambda=_constant_factor)`, so the `"none"` scheduler remains no-op while avoiding lambda serialization issues in checkpoint workflows.
+**Root Cause**: (1) Anonymous lambda is not picklable. (2) The lambda function returns constant 1.0 instead of implementing the QANet paper's warmup schedule: `lr(t) = learning_rate × min(1, t / warmup_steps)`.
 
-**BUG Impact (if not fixed)**: Training cannot proceed with the default notebook configuration (`scheduler_name="none"`). The run fails before optimizer/scheduler setup and before entering the training loop.
+**Fix**: Replace the anonymous lambda with a module-level picklable `_WarmupFactor` class that implements warmup then constant lr. Added `warmup_steps=1000` parameter to `train.py`. The effective lr schedule is now: inverse-exponential warmup from 0 to `learning_rate` (default 0.001) over `warmup_steps` (default 1000), then hold constant.
 
-**FIX Impact (after fixed)**: The `"none"` scheduler option is now available in the registry. Training proceeds past scheduler validation with a constant learning rate as intended by the vanilla recipe.
+**Rollback Note**: An earlier iteration added a `"none"` scheduler to the registry. This has been rolled back — `"none"` was never a valid scheduler option. The registry retains only `cosine`, `step`, `lambda`.
+
+**BUG Impact (if not fixed)**: (Stage I) Checkpoints cannot be saved. (Stage II) Adam+lambda gives lr=1.0, causing immediate divergence; the intended Adam training path is completely unusable.
+
+**FIX Impact (after fixed)**: `lambda_scheduler` is checkpoint-safe and implements the QANet paper's warmup schedule, enabling stable Adam training with the default configuration.
+
+> **✅ Warmup Curve Shape — Updated to Inverse Exponential (Log)**
+>
+> ~~Our original fix used **linear warmup** (`lr = target_lr × step / warmup_steps`).~~
+>
+> Updated to match all three reference implementations (`QANet-localminimum`, `QANet-NLPLearn`, `QANet-BangLiu`) which use **inverse-exponential (logarithmic) warmup**: `lr(t) = learning_rate × log(t + 1) / log(W)`, where W = warmup_steps. This is a concave curve that rises much faster initially:
+>
+> | step | Log warmup (current) | Linear warmup (old) |
+> |------|---------------------|---------------------|
+> | 100 | 0.000669 (66.9%) | 0.000100 (10.0%) |
+> | 500 | 0.000900 (90.0%) | 0.000500 (50.0%) |
+> | 999 | 0.001000 (100%) | 0.000999 (99.9%) |
+>
+> Reference code:
+> - localminimum/NLPLearn: `lr = min(0.001, 0.001 / log(999) * log(step + 1))`
+> - BangLiu: `cr = 1/log(W); factor = cr * log(step+1) if step < W else 1`
 
 ---
 
@@ -963,7 +983,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-037: `Models/Normalizations/groupnorm.py` L42
+### BUG-037 ✅: `Models/Normalizations/groupnorm.py` L35
 
 | Field | Value |
 |-------|-------|
@@ -972,13 +992,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | normalization |
 | Assignment | Stage II - Task 4: Regularization |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] |
 
 **Symptom**: Channels are split as (B, C//G, G, *spatial) so normalization is computed across interleaved channels rather than contiguous groups, producing wrong statistics and garbled output
 
 **Root Cause**: Reshape order is (B, C//G, G, *spatial) instead of the correct (B, G, C//G, *spatial)
 
-**Fix**: Change x.view(B, C // self.G, self.G, *spatial) to x.view(B, self.G, C // self.G, *spatial)
+**Fix**: Change `x.view(B, C // self.G, self.G, *spatial)` to `x.view(B, self.G, C // self.G, *spatial)`.
+
+**BUG Impact (if not fixed)**: Normalization statistics are computed across interleaved channels from different groups rather than contiguous channel blocks, producing incorrect mean/variance and garbled feature representations when GroupNorm is selected.
+
+**FIX Impact (after fixed)**: Each group normalizes over its own contiguous channel slice, restoring correct per-group statistics and valid GroupNorm behavior.
 
 **Chief Reasoning**:
 - *chief_a*: Models/Normalizations/groupnorm.py line 42: `x.view(B, C // self.G, self.G, *spatial)` puts C//G before G. The normalization dims tuple(range(2,...)) then normalizes over (G, *spatial) instead of (C//G, *spatial), mixing groups with spatial stats. Fix: x.view(B, self.G, C // self.G, *spatial).
@@ -986,7 +1011,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-038: `Models/encoder.py` L117
+### BUG-038/050 ✅: `Models/encoder.py` L117
 
 | Field | Value |
 |-------|-------|
@@ -995,13 +1020,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | attention |
 | Assignment | Stage II - Task 3: Attention Mechanism |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] |
 
-**Symptom**: Self-attention output is completely discarded; the encoder block's attention sub-layer contributes nothing
+**Symptom**: Self-attention output is completely discarded; the encoder block's attention sub-layer contributes nothing.
 
-**Root Cause**: `out = self.self_att(out, mask)` is immediately overwritten by `out = res` on the next line, destroying the attention result instead of forming a residual connection `out = out + res`
+**Root Cause**: `out = self.self_att(out, mask)` is immediately overwritten by `out = res` on the next line, destroying the attention result instead of forming a residual connection `out = out + res`.
 
-**Fix**: Change `out = res` to `out = out + res`
+**Fix**: Change `out = res` to `out = out + res`.
+
+**BUG Impact (if not fixed)**: The entire self-attention sublayer is dead — no attention information flows through the encoder. The model is effectively a conv-only network, severely limiting representational capacity.
+
+**FIX Impact (after fixed)**: Self-attention output is properly combined with the residual path, restoring the encoder's ability to model long-range dependencies.
 
 **Chief Reasoning**:
 - *chief_a*: Models/encoder.py lines 117-118: `out = self.self_att(out, mask)` then immediately `out = res`. The attention output is discarded and replaced by the residual. The attention sublayer contributes nothing. Fix: `out = out + res` (or `out = self.drop(out) + res`).
@@ -1009,7 +1039,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-041: `Models/Initializations/kaiming.py` L20
+### BUG-041 ✅: `Models/Initializations/kaiming.py` L25
 
 | Field | Value |
 |-------|-------|
@@ -1018,13 +1048,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | initialization |
 | Assignment | Stage II - Task 5: Initialization |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: Kaiming normal initialization variance is too small by a factor of 2, leading to vanishing gradients.
 
 **Root Cause**: The formula uses 1.0 / fan instead of 2.0 / fan.
 
-**Fix**: Change 1.0 / fan to 2.0 / fan.
+**Fix**: Change `math.sqrt(1.0 / fan)` to `math.sqrt(2.0 / fan)` in `kaiming_normal_`.
+
+**BUG Impact (if not fixed)**: Initialization variance is halved relative to He (2015), causing signal attenuation through stacked ReLU layers and contributing to vanishing gradients in deep networks.
+
+**FIX Impact (after fixed)**: Variance follows the correct He formula `2/fan`, preserving signal magnitude through ReLU layers and enabling stable forward/backward propagation.
 
 **Chief Reasoning**:
 - *chief_a*: Models/Initializations/kaiming.py line 20: `std = math.sqrt(1.0 / fan)`. He (2015) formula for ReLU is sqrt(2/fan). The code uses 1/fan instead of 2/fan, halving the variance. This leads to signal attenuation in deep ReLU networks.
@@ -1032,7 +1067,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-042: `Models/Initializations/kaiming.py` L37
+### BUG-042 ✅: `Models/Initializations/kaiming.py` L38
 
 | Field | Value |
 |-------|-------|
@@ -1041,13 +1076,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | initialization |
 | Assignment | Stage II - Task 5: Initialization |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] | gpt-5.4-pro[reason:xhigh] |
 
 **Symptom**: Kaiming uniform initialization has wrong bound, leading to vanishing activations after ReLU layers
 
 **Root Cause**: std = sqrt(1.0 / fan) instead of the correct He formula std = sqrt(2.0 / fan)
 
-**Fix**: Change `math.sqrt(1.0 / fan)` to `math.sqrt(2.0 / fan)` in kaiming_uniform_
+**Fix**: Change `math.sqrt(1.0 / fan)` to `math.sqrt(2.0 / fan)` in `kaiming_uniform_`.
+
+**BUG Impact (if not fixed)**: Same as BUG-041 — uniform variant also uses halved variance, producing under-scaled initial weights for any layers initialized with `kaiming_uniform`.
+
+**FIX Impact (after fixed)**: Uniform bound is derived from the correct He variance, matching `kaiming_normal_` in expected magnitude and restoring proper signal propagation.
 
 **Chief Reasoning**:
 - *chief_a*: Same bug as BUG-041, in kaiming_uniform_ (line 37). Both use sqrt(1.0/fan) instead of sqrt(2.0/fan).
@@ -1055,7 +1095,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-043: `Models/Initializations/xavier.py` L19
+### BUG-043 ✅: `Models/Initializations/xavier.py` L24
 
 | Field | Value |
 |-------|-------|
@@ -1064,13 +1104,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | initialization |
 | Assignment | Stage II - Task 5: Initialization |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: Xavier normal initialization variance is incorrect, leading to poor convergence.
 
 **Root Cause**: The formula uses fan_in * fan_out instead of fan_in + fan_out.
 
-**Fix**: Change fan_in * fan_out to fan_in + fan_out.
+**Fix**: Change `math.sqrt(2.0 / (fan_in * fan_out))` to `math.sqrt(2.0 / (fan_in + fan_out))` in `xavier_normal_`.
+
+**BUG Impact (if not fixed)**: For typical layer sizes (e.g., 128×128), `fan_in * fan_out = 16384` vs `fan_in + fan_out = 256`, making initial weights ~8× too small and causing severe vanishing gradients from the first forward pass.
+
+**FIX Impact (after fixed)**: Initialization follows Glorot (2010) with correct denominator `fan_in + fan_out`, producing appropriately scaled weights and enabling stable signal propagation.
 
 **Chief Reasoning**:
 - *chief_a*: Models/Initializations/xavier.py line 19: `std = gain * math.sqrt(2.0 / (fan_in * fan_out))`. Glorot (2010) uses fan_in + fan_out in the denominator, not fan_in * fan_out. This dramatically reduces the scale for typical layer sizes. Note: xavier_uniform_ at line 30 has the identical bug.
@@ -1147,7 +1192,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-049: `Models/encoder.py` L61
+### BUG-049 ✅: `Models/encoder.py` L84
 
 | Field | Value |
 |-------|-------|
@@ -1156,13 +1201,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | attention |
 | Assignment | Stage II - Task 3: Attention Mechanism |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive,budget:16000] | claude-opus-4-6[think:adaptive] |
 
 **Symptom**: The model mixes data across different batch elements, destroying batch independence and ruining gradients.
 
-**Root Cause**: The `permute(2, 0, 1, 3)` call creates an [H, B, L, d_k] layout, but the subsequent `view` operations assume a [B, H, L, d_k] layout, causing batch and head dimensions to be interleaved.
+**Root Cause**: The input `permute(2, 0, 1, 3)` creates H-major layout [H*B, L, d_k], but the output `view(batch_size, self.num_heads, ...)` assumes B-major layout, scrambling batch and head dimensions when reassembling the multi-head output.
 
-**Fix**: Use `permute(0, 2, 1, 3)` for q, k, and v, and `permute(0, 2, 1, 3)` for the output tensor before reshaping.
+**Fix**: Change the output view from `view(batch_size, self.num_heads, length, self.d_k)` to `view(self.num_heads, batch_size, length, self.d_k)`. This correctly interprets the H-major data as [H, B, L, d_k], and the existing `permute(1, 2, 0, 3)` then correctly produces [B, L, H, d_k]. The input permute and mask `repeat(H,1,1)` remain H-major and consistent with each other.
+
+**BUG Impact (if not fixed)**: For batch_size > 1, the multi-head attention output is completely scrambled — data from different batch elements and heads are mixed together, destroying the attention mechanism's contribution and making the model unable to learn meaningful attention patterns during training.
+
+**FIX Impact (after fixed)**: The output view correctly interprets the H-major layout as [H, B, L, d_k], and the subsequent permute produces valid [B, L, d_model] output, restoring correct multi-head attention reassembly and enabling the attention mechanism to learn.
 
 **Chief Reasoning**:
 - *chief_a*: Models/encoder.py line 61: `q.permute(2, 0, 1, 3)` on [B,L,H,d_k] produces [H,B,L,d_k], not [B,H,L,d_k]. After contiguous().view(B*H,L,d_k), the data is H-major. The attention computation itself happens to work (mask repeat is also H-major), BUT the output view(B,H,L,d_k) assumes B-major, scrambling batch and head dimensions. Output permute(1,2,0,3) is also wrong (should be (0,2,1,3)). Note: fixing input permute to (0,2,1,3) also requires fixing the mask expansion from repeat(H,1,1) to a B-major scheme.
@@ -1170,28 +1220,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-050: `Models/encoder.py` L132
-
-| Field | Value |
-|-------|-------|
-| Stage | stage2 |
-| Severity | major |
-| Category | attention |
-| Assignment | Stage II - Task 3: Attention Mechanism |
-| Confidence | high |
-| Discovered by | gpt-5.4-pro[reason:xhigh] |
-
-**Symptom**: The self-attention sublayer has no effect; the block effectively drops back to the residual path only.
-
-**Root Cause**: Immediately after `self.self_att(out, mask)`, the code overwrites the result with `out = res` instead of adding the residual connection.
-
-**Fix**: Keep the attention output and combine it with the residual, e.g. `out = self.drop(out) + res` (or equivalent layer-drop logic).
-
-**Chief Reasoning**:
-- *chief_a*: Duplicate of BUG-037. Same attention output overwritten by residual.
-- *chief_b*: Duplicate of BUG-037. Same attention residual overwrite: `out = res` discards self-attention output.
-
-### BUG-054: `Optimizers/sgd.py` L38
+### BUG-054 ✅: `Optimizers/sgd.py` L38
 
 | Field | Value |
 |-------|-------|
@@ -1200,6 +1229,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | optimizer |
 | Assignment | Stage II - Task 1: Optimizer |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | gemini-3.1-pro-preview[think:high] |
 
 **Symptom**: Weight decay subtracts wd*p from gradient instead of adding it, implementing negative L2 regularization
@@ -1208,13 +1238,424 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 **Fix**: Change alpha=-wd to alpha=wd
 
+**BUG Impact (if not fixed)**: SGD with weight decay pushes parameters away from zero (anti-regularization), causing weights to grow and potentially destabilizing training.
+
+**FIX Impact (after fixed)**: Weight decay correctly penalizes large weights, restoring L2 regularization behavior for SGD.
+
 **Chief Reasoning**:
 - *chief_a*: Optimizers/sgd.py line 38: `grad = grad.add(p, alpha=-wd)` gives grad - wd*p. Then p.add_(grad, alpha=-lr) gives p - lr*(grad-wd*p) = p - lr*grad + lr*wd*p. The +lr*wd*p term increases weight magnitude — negative regularization. Fix: alpha=wd.
 - *chief_b*: Optimizers/sgd.py line 38: `grad = grad.add(p, alpha=-wd)` computes grad - wd*p. Same as BUG-053: L2 regularization needs positive alpha. Fix: alpha=wd.
 
 ---
 
-### BUG-056: `Schedulers/cosine_scheduler.py` L25
+### BUG-N003 ✅: `Models/encoder.py` L78
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | major |
+| Category | attention |
+| Assignment | Stage II - Task 3: Attention Mechanism |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | peer cross-reference |
+
+**Symptom**: Attention weights are over-concentrated (near one-hot softmax outputs), causing vanishing gradients through the attention sublayer.
+
+**Root Cause**: The scaled dot-product attention is missing the `1/√d_k` scaling factor. `self.scale` is correctly defined in `__init__` as `1.0 / math.sqrt(self.d_k)`, but the forward pass computes `torch.bmm(q, k.transpose(1,2))` without multiplying by `self.scale`.
+
+**Fix**: Change `attn = torch.bmm(q, k.transpose(1, 2))` to `attn = torch.bmm(q, k.transpose(1, 2)) * self.scale`.
+
+**BUG Impact (if not fixed)**: Without scaling, the dot-product magnitudes grow with `d_k`, pushing softmax outputs toward extreme values (near 0 or 1). This makes attention gradients near-zero, effectively preventing the attention sublayer from learning meaningful patterns.
+
+**FIX Impact (after fixed)**: Dot-product values are properly normalized, producing smoother attention distributions and stable gradients through the attention mechanism.
+
+---
+
+### BUG-N004 ↩️ Rolled Back: `Models/encoder.py` L120-121
+
+| Field | Value |
+|-------|-------|
+| Stage | N/A (rolled back) |
+| Severity | N/A |
+| Category | encoder |
+| Assignment | Stage II - Task 3: Attention Mechanism |
+| Confidence | N/A |
+| Status | ↩️ Rolled Back — original code is correct |
+| Discovered by | peer cross-reference |
+
+**Original Proposed Fix**: Swap the order from `res = out; out = self.norms[i](out)` to `out = self.norms[i](out); res = out`.
+
+**Why Rolled Back**: The QANet paper (Yu et al., ICLR 2018) defines the residual block as `f(layernorm(x)) + x`, where the residual is the **un-normalized** input `x`. The original code order (`res = out` then `out = norms[i](out)`) correctly implements this: it saves the pre-norm output as the residual and normalizes for the next sublayer input. The proposed swap would make the residual carry post-norm features, breaking the "full identity path" described in the paper and changing the formula to `f(layernorm(x)) + layernorm(x)`.
+
+---
+
+### BUG-N005 ↩️ Rolled Back: `Models/encoder.py` L19
+
+| Field | Value |
+|-------|-------|
+| Stage | N/A (rolled back) |
+| Severity | N/A |
+| Category | attention |
+| Assignment | Stage II - Task 3: Attention Mechanism |
+| Confidence | N/A |
+| Status | ↩️ Rolled Back — not a bug |
+| Discovered by | peer cross-reference |
+
+**Original Proposed Fix**: Change `masked_fill(mask, -1e30)` to `masked_fill(mask, -1e9)`.
+
+**Why Rolled Back**: `-1e30` works correctly in float32 training. The difference is purely a numerical preference, not a functional bug. The original value is kept unchanged.
+
+### BUG-N006 ✅ [Inconsistency]: `Models/encoder.py` L99-130
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | major |
+| Category | model_architecture |
+| Assignment | Stage II - Task 3: Encoder Block |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541) + reference implementations (QANet-localminimum, QANet-NLPLearn, QANet-BangLiu) |
+
+**Symptom**: Model encoder blocks have reduced expressive capacity; F1 improves slowly despite decreasing loss.
+
+**Root Cause**: The Feed-Forward Network (FFN) sub-layer in `EncoderBlock` only has **one** linear layer (`self.fc = nn.Linear(d_model, d_model)`) followed by activation: `ReLU(W·x)`. The QANet paper inherits the Transformer FFN which has **two** linear layers: `FFN(x) = W₂·ReLU(W₁·x + b₁) + b₂`. All three reference implementations (localminimum, NLPLearn, BangLiu) confirm the two-layer design.
+
+**Fix**: Replace `self.fc` with `self.fc1` and `self.fc2`, both `nn.Linear(d_model, d_model)`. Forward path changed from `act(fc(x))` to `fc2(act(fc1(x)))`, placing ReLU **between** the two layers as the paper specifies.
+
+**BUG Impact (if not fixed)**: Every encoder block's FFN has half the intended nonlinear transformation capacity. The Model Encoder calls this 7 blocks × 3 stacks = 21 times, making this a systematic bottleneck that limits the model's ability to learn complex feature interactions.
+
+**FIX Impact (after fixed)**: Each FFN sub-layer now has the full two-layer nonlinear transformation, matching the paper's architecture and all reference implementations.
+
+---
+
+### BUG-N007 ✅ [Inconsistency]: `Losses/loss.py` L7
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | major |
+| Category | loss_function |
+| Assignment | Stage II - Task 1: Loss Function |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541) + reference implementations (QANet-localminimum, QANet-NLPLearn, QANet-BangLiu) |
+
+**Symptom**: SGD + cosine scheduler combination converges extremely slowly and triggers early stopping before any meaningful learning. Adam is less affected due to its scale-invariant adaptive updates.
+
+**Root Cause**: `qa_nll_loss` applies a `0.5` scaling factor: `0.5 * (nll_loss(p1,y1) + nll_loss(p2,y2))`. The QANet paper defines the loss as the **sum** of negative log-probabilities for start and end positions, with no 0.5 factor. All three reference implementations confirm: `loss = loss_start + loss_end`.
+
+For Adam, the 0.5 is absorbed by its adaptive `m_hat / sqrt(v_hat)` normalization, so the impact is minimal. For SGD, gradient magnitude directly determines step size — the 0.5 literally halves the effective learning rate, making SGD+cosine (with default lr=0.001) nearly untrainable.
+
+**Fix**: Remove `0.5 *` from `qa_nll_loss`, making it `F.nll_loss(p1, y1) + F.nll_loss(p2, y2)`.
+
+**BUG Impact (if not fixed)**: SGD-based training paths are severely handicapped. With default lr=0.001, the effective learning rate is only 0.0005 — too low for convergence within the early stopping window.
+
+**FIX Impact (after fixed)**: All optimizer/scheduler combinations now receive the full gradient signal, making SGD and SGD_momentum paths viable with default hyperparameters.
+
+---
+
+### BUG-N008 ✅ [Inconsistency]: `Models/Normalizations/normalization.py` L38 + `Models/qanet.py` L47-51
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | major |
+| Category | normalization / weight_sharing |
+| Assignment | Stage I - Task 3: Normalization + Model Architecture |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Figure 1) + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Context and question embedding encoders and projection layers use independent (unshared) weights, doubling parameter count and preventing the model from learning a unified context/question representation.
+
+**Root Cause (causal chain)**:
+
+1. **Root — LayerNorm normalizes over wrong dimensions**: The paper states "We use layernorm" (Figure 1 caption), referring to standard Layer Normalization (Ba et al., 2016), which by definition normalizes over the **feature dimension only**. However, `get_norm("layer_norm", d_model, length)` created `LayerNorm([d_model, length])`, normalizing over both [C, L] dims — this is closer to Instance Normalization, **not** the standard layernorm the paper specifies. Parameter shapes were `weight=[96, 400]` (context) / `[96, 50]` (question), depending on sequence length. The correct implementation (matching the paper and all three reference implementations) is `LayerNorm(d_model)`, normalizing over the channel dimension only, with parameter shape `[96]` independent of sequence length.
+2. **Consequence ① — EncoderBlock cannot be shared**: Because LayerNorm parameter shapes differ between context (length=400) and question (length=50), the embedding encoder was forced into two separate instances `c_emb_enc` / `q_emb_enc`.
+3. **Consequence ② — Projection layer cannot be shared**: For the same reason, projection convolutions were split into `context_conv` / `question_conv`.
+
+The paper (Figure 1 caption) explicitly states: **"We also share weights of the context and question encoder"**. All three reference implementations share weights.
+
+**Fix**:
+1. `normalization.py`: Added `_ChannelFirstLayerNorm` wrapper class that transposes [B,C,L] input to [B,L,C], applies `LayerNorm(d_model)` over the channel dimension, then transposes back. `get_norm` now returns this wrapper for `"layer_norm"`.
+2. `qanet.py`: Merged `context_conv` + `question_conv` → single shared `proj_conv`; merged `c_emb_enc` + `q_emb_enc` → single shared `emb_enc`. In forward, both context and question pass through the same instances.
+
+**BUG Impact (if not fixed)**: Doubled parameter count (two encoder blocks + two projection layers), violates paper's weight-sharing design, model cannot learn a unified context/question feature extractor.
+
+**FIX Impact (after fixed)**: Reduced parameter count, consistent with paper and all reference implementations, context and question share a single feature extraction pathway.
+
+---
+
+### BUG-N009 ✅ [Inconsistency]: `Models/qanet.py` L47
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | minor |
+| Category | model_architecture |
+| Assignment | Stage I - Task 4: Model Architecture |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 2, "Embedding Encoder Layer") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Projection layer from embedding dimension (p₁+p₂) to d_model uses a more complex convolution than necessary, deviating from paper specification.
+
+**Root Cause**: The paper (Section 2) states: "the input of this layer is a vector of dimension p₁ + p₂ = 500 ... which is immediately mapped to d = 128 by **a one-dimensional convolution**". The paper deliberately distinguishes this regular 1D convolution from the "depthwise separable convolutions" used inside encoder blocks. However, our `proj_conv` was implemented as `DepthwiseSeparableConv(d_word + d_char, d_model, 5)` — a depthwise separable conv with kernel size 5 instead of a standard Conv1d. All three reference implementations use a regular Conv1d with kernel size 1 for this projection:
+- BangLiu: `Initialized_Conv1d(wemb_dim + d_model, d_model, bias=False)` (kernel=1)
+- localminimum / NLPLearn: `conv(inputs, d, name="input_projection")` (kernel=1)
+
+**Fix**: Replaced `DepthwiseSeparableConv(d_word + d_char, d_model, 5)` with `Conv1d(d_word + d_char, d_model, 1)` — a standard 1D convolution with kernel size 1, matching the paper and all reference implementations.
+
+**BUG Impact (if not fixed)**: Unnecessary parameters and computation in the projection layer; deviates from paper's explicit specification of "a one-dimensional convolution".
+
+**FIX Impact (after fixed)**: Projection layer matches paper and reference implementations exactly — a simple linear channel projection via Conv1d(kernel=1).
+
+---
+
+### BUG-N010 ✅ [Inconsistency]: `Models/qanet.py` L56
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | minor |
+| Category | model_architecture |
+| Assignment | Stage I - Task 4: Model Architecture |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 4, "Model Encoder Layer") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Model Encoder Layer input projection (4×d_model → d_model) uses DepthwiseSeparableConv(k=5) instead of a standard Conv1d(k=1).
+
+**Root Cause**: The paper (Section 4) states: "the input of this layer at each position is [c, a, c ⊙ a, c ⊙ b]". This 4×d_model input must be projected back to d_model before entering the encoder blocks. The paper does not explicitly specify the projection type, but all three reference implementations use a standard Conv1d with kernel_size=1:
+- BangLiu: `Initialized_Conv1d(d_model * 4, d_model)` (default kernel_size=1)
+- localminimum: `conv(inputs, d, name="input_projection")` (default kernel_size=1)
+- NLPLearn: identical to localminimum
+
+Our `cq_resizer` was implemented as `DepthwiseSeparableConv(d_model * 4, d_model, 5)`, deviating from all reference implementations. Same class of issue as BUG-N009.
+
+**Fix**: Replaced `DepthwiseSeparableConv(d_model * 4, d_model, 5)` with `Conv1d(d_model * 4, d_model, kernel_size=1, bias=False)`.
+
+**BUG Impact (if not fixed)**: Unnecessary parameters and contextual mixing in a dimension-projection layer; inconsistent with all reference implementations.
+
+**FIX Impact (after fixed)**: Model Encoder input projection matches all reference implementations — a simple pointwise projection via Conv1d(kernel=1).
+
+---
+
+### BUG-N012 ✅ [Inconsistency]: `Models/encoder.py` EncoderBlock — Stochastic Depth
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | medium |
+| Category | regularization / training |
+| Assignment | Stage I - Task 2: Encoder Blocks |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 4.1, "stochastic depth") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Regularization mechanism not matching the paper's stochastic depth specification; training stability and generalization may be impacted.
+
+**Root Cause**: The paper (Section 4.1) states: *"We also use the stochastic depth method (layer dropout) within each embedding or model encoder layer, where sublayer l has survival probability p_l = 1 − (l/L)(1 − p_L) where L is the last layer and p_L = 0.9."* This requires:
+1. **Layer dropout** (entire sublayer skipped or kept), not element-wise dropout
+2. Applied to **all sublayers** (conv, self-attention, FFN)
+3. **Global sublayer indexing** across all blocks: drop prob = `dropout × l / L`, L = `(conv_num + 2) × num_blocks`
+
+Our implementation had multiple issues:
+- Used element-wise `Dropout` (drops individual neurons, not entire sublayers)
+- Only applied to convolution sublayers — self-attention and FFN had only regular dropout
+- Only applied every 2nd conv (`if (i+1) % 2 == 0`)
+- Used `L = conv_num` (local) instead of global total sublayers
+
+Reference implementations confirmed:
+- localminimum: `layer_dropout(inputs, residual, dropout * l / L)` for all sublayers, `L = (num_conv_layers + 2) * num_blocks`
+- BangLiu: `self.layer_dropout(out, res, dropout * l / total_layers)` for all sublayers, passed `l` and `blks` from model level
+- Both: layer dropout = with prob p skip entire sublayer (return residual), else `F.dropout(inputs, p) + residual`
+
+**Fix**:
+- `Models/encoder.py`: Replaced `conv_drops` (element-wise Dropout) with `_layer_dropout()` method that either skips the entire sublayer (returns residual) or applies `F.dropout(inputs, p) + residual`. Applied to ALL sublayers (conv, self-attention, FFN). Renamed norms to `norm_c`, `norm_a`, `norm_f` for clarity.
+- `Models/qanet.py`: Pass `l` (starting sublayer index) and `total_layers` to each `EncoderBlock.forward()`:
+  - Embedding encoder: `l=1`, `total_layers=6` (4 conv + 1 attn + 1 FFN)
+  - Model encoder: `l=i*4+1`, `total_layers=28` (7 blocks × 4 sublayers)
+
+**BUG Impact (if not fixed)**: Suboptimal regularization — stochastic depth provides an important form of structural dropout that makes deeper encoder blocks more robust. Without it, the 7-block model encoder may overfit or fail to train stably.
+
+**FIX Impact (after fixed)**: Stochastic depth now matches the paper and all reference implementations — linearly increasing drop probability across all sublayers, with proper layer-level skip/keep semantics.
+
+---
+
+### BUG-N011 ✅ [Inconsistency]: `EvaluateTools/eval_utils.py` L107-113
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | medium |
+| Category | inference |
+| Assignment | Stage I - Task 4: Output Layer |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 5, "Output Layer — Inference") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: Inference span selection may produce suboptimal or incorrect answer spans.
+
+**Root Cause**: The paper (Section 5) states: "At inference time, the predicted span (s, e) is chosen such that p¹_s p²_e is maximized and s ≤ e." This requires a joint optimization via outer product of start and end probabilities. Our implementation used independent argmax on start and end positions, then min/max swap to enforce ordering — this finds (argmax p¹, argmax p²) and swaps if out of order, rather than jointly maximizing p¹_s × p²_e. Reference implementations confirm the outer product approach:
+- BangLiu: `outer = torch.matmul(p1.unsqueeze(2), p2.unsqueeze(1))` + `torch.triu` + argmax
+- localminimum/NLPLearn: `outer = tf.matmul(softmax(logits1), softmax(logits2))` + `matrix_band_part` + argmax
+
+**Fix**: Replaced independent argmax + min/max swap with joint outer product decoding: compute `outer[s,e] = p1_s + p2_e` in log-space, mask to upper triangular (s ≤ e), then find the (s, e) that maximizes the joint score.
+
+**BUG Impact (if not fixed)**: When start > end from independent argmax, the swap produces a span where neither position was optimal for its role. Example: if argmax(p1)=10, argmax(p2)=5, the swap gives span (5,10) but p1 at position 5 and p2 at position 10 may both be low.
+
+**FIX Impact (after fixed)**: Inference now jointly maximizes p¹_s × p²_e subject to s ≤ e, matching the paper and all reference implementations.
+
+---
+
+### BUG-N013 ✅ [Inconsistency]: `Models/embedding.py` L27-50 — Character Embedding Cross-Word Leakage
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | major |
+| Category | architecture / embedding |
+| Assignment | Stage II - Task 1: Input Embedding Layer |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | paper comparison (arXiv:1804.09541 Section 2, "Input Embedding Layer") + reference implementations (QANet-BangLiu, QANet-localminimum, QANet-NLPLearn) |
+
+**Symptom**: The character embedding path applies a 2D depthwise-separable convolution (kernel 5×5) over tensor `[B, d_char, L, char_len]`, where L is the token position axis and char_len is the character position axis. The 5×5 kernel convolves over both dimensions simultaneously, causing character representations of word `i` to incorporate information from neighboring words `i-2 ... i+2`. This cross-word leakage violates the QANet paper's per-word character encoder design.
+
+**Root Cause**: `Embedding.__init__` creates `DepthwiseSeparableConv(d_char, d_char, 5, dim=2)` — a 2D conv that operates over both spatial dimensions (token position L and character position char_len). The paper and all reference implementations process characters per-word in isolation.
+
+Reference implementations confirmed:
+- localminimum / NLPLearn: `tf.reshape(ch_emb, [N*PL, CL, dc])` → 1D `conv(k=5)` → `tf.reduce_max(axis=1)` → reshape back. Characters are reshaped to `[B*L, char_len, d_char]` so the conv is strictly per-word.
+- BangLiu: `nn.Conv2d(cemb_dim, d_model, kernel_size=(1, 5))` — kernel height=1 means no mixing across token positions; only convolves over char_len.
+
+**Fix**:
+- Changed `self.conv2d = DepthwiseSeparableConv(d_char, d_char, 5, dim=2)` → `self.char_conv = DepthwiseSeparableConv(d_char, d_char, 5, dim=1)` (1D conv).
+- In `forward`, reshape `ch_emb` from `[B, L, char_len, d_char]` to `[B*L, d_char, char_len]` (per-word isolation), apply 1D conv + activation, max-pool over `char_len` (dim=2), then reshape back to `[B, d_char, L]`.
+
+**BUG Impact (if not fixed)**: Character representations leak information across neighboring words, violating the paper's per-word encoder design. This may allow the model to "cheat" during training by using adjacent word context in the character path, degrading generalization.
+
+**FIX Impact (after fixed)**: Each word's character-level representation is computed independently — matching the paper and all three reference implementations.
+
+---
+
+### BUG-N014 ❌ [Invalidated]: `TrainTools/train.py` L194-202 — Early Stopping (False Positive)
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | — |
+| Category | training loop |
+| Assignment | Stage II - Task 4: Training Loop |
+| Confidence | — |
+| Status | ❌ Invalidated (false positive) |
+| Discovered by | reference implementation comparison |
+
+**Conclusion**: Verified via `git diff 99c1aec HEAD` that the early stopping logic was never modified from the original fork. The original condition `if dev_f1 < best_f1 and dev_em < best_em` is identical to all three reference implementations (localminimum, NLPLearn, BangLiu). BUG-070's proposed fix was never actually applied, and BUG-N014 (a "second fix" of BUG-070) had no real code change either. Both are false positives and invalidated.
+
+---
+
+### BUG-N015 ✅ [Design Flaw]: `TrainTools/train.py` L194-211 & `TrainTools/train_utils.py` L44-60 — Best Checkpoint Overwrite
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | major |
+| Category | training loop / checkpoint |
+| Assignment | Stage I - Training Loop |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | manual review + reference implementation comparison |
+
+**Symptom**: Only `model.pt` is saved at each evaluation checkpoint, unconditionally overwriting the previous one. If the model overfits in later training, the best-performing checkpoint is permanently lost.
+
+**Root Cause**: `save_checkpoint` writes to a single fixed filename with no mechanism to preserve the best model. The training loop does not track whether the current evaluation is a new best.
+
+**Reference Implementations**: All three (localminimum, NLPLearn, BangLiu) maintain an `is_best` flag and only persist the best checkpoint for final evaluation.
+
+**Fix**: Added `is_best` flag to `train.py` (set `True` when `dev_f1` or `dev_em` exceeds the running best) and an `is_best=False` parameter to `save_checkpoint` in `train_utils.py`. When `is_best=False`, `save_checkpoint` returns immediately without writing anything. Only when `is_best=True` does it save `model.pt`. This ensures `model.pt` is always the best model.
+
+**BUG Impact (if not fixed)**: After overfitting, the best model is overwritten by worse checkpoints — final evaluation uses a suboptimal model.
+
+**FIX Impact (after fixed)**: `model.pt` always contains the best-performing checkpoint. No redundant saves, no separate `model_best.pt` needed. Compatible with the original `evaluate(ckpt_name="model.pt")` without any changes.
+
+---
+
+### BUG-N016 ✅ [Design Flaw]: `Models/heads.py` L29-30 & `Losses/loss.py` — log_softmax Placement Makes qa_ce_loss Unusable
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | minor |
+| Category | loss function / output layer |
+| Assignment | Stage I - Loss Function |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | external review (QANET_Final_Verdict A7) + reference implementation comparison |
+
+**Symptom**: `qa_ce_loss` (`F.cross_entropy`) expects raw logits but the `Pointer` head returns `F.log_softmax` outputs. Using `qa_ce_loss` would apply `log_softmax` twice, producing incorrect gradients. Only `qa_nll_loss` was usable.
+
+**Root Cause**: `log_softmax` was baked into the model output layer (`heads.py`). All three reference implementations (BangLiu, NLPLearn, localminimum) output raw logits and pair them with `cross_entropy` / `softmax_cross_entropy_with_logits`.
+
+**Fix**: Removed `F.log_softmax` from `Pointer.forward` (now returns masked logits). Updated `qa_nll_loss` to apply `F.log_softmax` before `F.nll_loss`. Updated `eval_utils.py` to apply `log_softmax` before the joint outer product for span decoding. `qa_ce_loss` now works correctly without changes.
+
+**BUG Impact (if not fixed)**: `qa_ce_loss` path silently produces wrong loss values and gradients (double log_softmax). Only one of two registered loss functions is usable.
+
+**FIX Impact (after fixed)**: Both `qa_nll` and `qa_ce` loss paths are correct and mathematically equivalent. Model output is raw logits, matching all reference implementations.
+
+---
+
+### BUG-N017 ✅ [Missing Feature]: `TrainTools/train.py` — No Exponential Moving Average (EMA)
+
+| Field | Value |
+|-------|-------|
+| Stage | stage1 |
+| Severity | moderate |
+| Category | training loop / regularization |
+| Assignment | Stage I - Training Loop |
+| Confidence | high |
+| Status | ✅ Fixed |
+| Discovered by | external review (QANET_Final_Verdict A5) + reference implementation comparison |
+
+**Symptom**: The paper states "We also apply exponential moving average on all trainable variables with a decay rate of 0.9999." No EMA was present in the training or evaluation path.
+
+**Root Cause**: EMA was never implemented. All three reference implementations include EMA: NLPLearn/localminimum use `tf.train.ExponentialMovingAverage(0.9999)`, BangLiu uses a custom `EMA` class with optional `--use_ema` flag.
+
+**Fix**: Added `TrainTools/ema.py` with `EMA` class (register, update, assign, resume — following BangLiu's design). Integrated into `train.py`: new `ema_decay=0.9999` parameter, EMA update after every optimizer step, EMA weights assigned before evaluation and checkpoint saving, resumed after. `train_single_epoch` in `train_utils.py` now accepts optional `ema` parameter.
+
+**BUG Impact (if not fixed)**: Model evaluation uses raw training weights instead of smoothed EMA weights, typically resulting in 1-2 F1 points lower than achievable.
+
+**FIX Impact (after fixed)**: EMA-smoothed weights are used for all evaluation and saved checkpoints, matching the paper and all three reference implementations.
+
+---
+
+### BUG-N018 ⚠️ [Warning]: `EvaluateTools/evaluate.py` — Does Not Restore Checkpoint Config
+
+| Field | Value |
+|-------|-------|
+| Stage | stage2 |
+| Severity | low (currently safe, risky if architecture params change) |
+| Category | evaluation / config |
+| Assignment | Stage II - Evaluation |
+| Confidence | high |
+| Status | ⚠️ Documented (not fixed) |
+| Discovered by | external review (QANET_Final_Verdict A3) + chief_report BUG-039/040 |
+
+**Symptom**: `evaluate()` rebuilds the model from function defaults and `getattr` fallbacks in `QANet.__init__`, not from the config saved in the checkpoint. If training used non-default architecture parameters (e.g. `norm_name="group_norm"`, `activation="gelu"`), evaluation silently constructs a different model.
+
+**Root Cause**: `evaluate.py` constructs `args` from its own parameter list, which lacks `norm_name`, `activation`, `init_name`, `norm_groups`. `QANet.__init__` uses `getattr(args, key, default)` to fill in missing values, masking the inconsistency.
+
+**Current Risk**: Low — all current training runs use default architecture parameters, so evaluate's defaults match. Risk increases if Stage 2 experiments change architecture params.
+
+**Recommended Fix** (not applied): Load `ckpt["config"]` before model construction and use it to override architecture-related fields in `args`. See chief_report BUG-039/040 for details.
+
+**Reference**: All three reference implementations (NLPLearn, localminimum, BangLiu) also do NOT load config from checkpoint during evaluation — they rely on runtime flags/args matching training. This is a shared design limitation, not unique to this repo.
+
+---
+
+### BUG-056 ✅: `Schedulers/cosine_scheduler.py` L28
 
 | Field | Value |
 |-------|-------|
@@ -1223,13 +1664,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | lr_scheduler |
 | Assignment | Stage II - Task 2: LR Scheduler |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gemini-3.1-pro-preview[think:high] | claude-opus-4-6[think:adaptive,budget:16000] | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] |
 
-**Symptom**: Learning rate does not decay to eta_min properly, it decays to a different value because the 0.5 factor is missing.
+**Symptom**: At t=0, lr = 2×base_lr − eta_min instead of base_lr; the cosine curve starts at double the intended learning rate.
 
-**Root Cause**: The formula is missing the 0.5 multiplier before (base_lr - self.eta_min).
+**Root Cause**: The formula is missing the 0.5 multiplier: `(base_lr - eta_min) * (1 + cos(...))` instead of `0.5 * (base_lr - eta_min) * (1 + cos(...))`.
 
-**Fix**: Add 0.5 * before (base_lr - self.eta_min).
+**Fix**: Add `0.5 *` before `(base_lr - self.eta_min)` in `get_lr()`.
+
+**BUG Impact (if not fixed)**: Cosine scheduler starts at 2× the intended lr, causing unstable optimization in early training and incorrect decay curve throughout.
+
+**FIX Impact (after fixed)**: Cosine schedule correctly ranges from base_lr (at t=0) to eta_min (at t=T_max), matching the standard formula.
 
 **Chief Reasoning**:
 - *chief_a*: Schedulers/cosine_scheduler.py line 25: formula is `eta_min + (base_lr - eta_min) * (1 + cos(...))`. Missing the 0.5 factor. At t=0: lr = eta_min + 2*(base_lr-eta_min) = 2*base_lr - eta_min, which is ~2x the intended initial lr. Correct: `eta_min + 0.5 * (base_lr - eta_min) * (1 + cos(...))`.
@@ -1423,7 +1869,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-062: `Models/Initializations/xavier.py` L30
+### BUG-062 ✅: `Models/Initializations/xavier.py` L36
 
 | Field | Value |
 |-------|-------|
@@ -1431,7 +1877,8 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Severity | major |
 | Category | initialization |
 | Assignment | Stage II - Task 5: Initialization |
-| Confidence | ? |
+| Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | claude-opus-4-6[think:adaptive] (chief) |
 
 **Symptom**: Xavier uniform initialization has incorrect variance, producing values that are orders of magnitude too small for typical layer sizes.
@@ -1439,6 +1886,10 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 **Root Cause**: `xavier_uniform_` uses `fan_in * fan_out` instead of `fan_in + fan_out` in the denominator — the same bug as `xavier_normal_` (BUG-043). For a layer with fan_in=96, fan_out=96: code gives sqrt(2/(96*96))=0.0147 vs correct sqrt(2/(96+96))=0.102, a 7x difference.
 
 **Fix**: Change `math.sqrt(2.0 / (fan_in * fan_out))` to `math.sqrt(2.0 / (fan_in + fan_out))` in `xavier_uniform_`.
+
+**BUG Impact (if not fixed)**: Same as BUG-043 — uniform variant produces bounds ~7× too small for typical layers, causing severe signal attenuation when Xavier uniform initialization is selected.
+
+**FIX Impact (after fixed)**: Uniform bounds are derived from the correct Glorot denominator `fan_in + fan_out`, restoring properly scaled initialization for the Xavier uniform path.
 
 **Why Missed by Teams**: BUG-043 only explicitly references xavier_normal_ (line 19). Teams examining the file likely spotted the bug in one function and assumed (or didn't verify) the other function was correct, or simply didn't report both locations separately.
 
@@ -1465,7 +1916,7 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-064: `Models/qanet.py` L46
+### BUG-064 ✅: `Models/qanet.py` L43
 
 | Field | Value |
 |-------|-------|
@@ -1474,13 +1925,18 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 | Category | embedding |
 | Assignment | Stage II - Task 7: Embedding |
 | Confidence | high |
+| Status | ✅ Fixed |
 | Discovered by | gpt-5.4-pro[reason:xhigh] | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] |
 
 **Symptom**: GloVe word embeddings are fine-tuned during training instead of being frozen, degrading generalization.
 
 **Root Cause**: nn.Embedding.from_pretrained for word_emb uses freeze=False instead of freeze=True.
 
-**Fix**: Change freeze=False to freeze=True for word_emb.
+**Fix**: Change `freeze=False` to `freeze=True` for word_emb.
+
+**BUG Impact (if not fixed)**: Pre-trained GloVe representations drift during training, causing overfitting on the relatively small SQuAD dataset and degrading generalization to unseen examples.
+
+**FIX Impact (after fixed)**: Word embeddings remain frozen at pre-trained values, preserving generalization and matching the QANet paper configuration.
 
 **Chief Reasoning**:
 - *chief_a*: Models/qanet.py line 46: `nn.Embedding.from_pretrained(word_mat, freeze=False)`. The original QANet paper freezes GloVe word embeddings to prevent catastrophic forgetting of pretrained representations. freeze=False allows fine-tuning, degrading generalization especially with small datasets.
@@ -1603,26 +2059,21 @@ The codebase is pervasively broken across all major components, with 40+ distinc
 
 ---
 
-### BUG-070: `TrainTools/train.py` L148
+### BUG-070 ❌ (Invalidated): `TrainTools/train.py` L194
 
 | Field | Value |
 |-------|-------|
 | Stage | stage2 |
-| Severity | major |
+| Severity | — |
 | Category | training_loop |
 | Assignment | Stage II - Task 2: Train/Eval Loop |
-| Confidence | high |
+| Confidence | — |
+| Status | ❌ Invalidated (false positive) |
 | Discovered by | claude-opus-4-6[think:adaptive] | claude-opus-4-6[think:adaptive,budget:16000] |
 
-**Symptom**: Early stopping almost never triggers: patience only increments when *both* F1 and EM are strictly worse than their respective bests, so any minor fluctuation in one metric resets patience indefinitely.
+**Original Claim**: The condition `if dev_f1 < best_f1 and dev_em < best_em` using `and` would make early stopping almost never trigger.
 
-**Root Cause**: The condition `if dev_f1 < best_f1 and dev_em < best_em` uses `and` (both must degrade) with strict `<` (ties don't count). The correct early-stop condition should be that *neither* metric improved, i.e. `dev_f1 <= best_f1 and dev_em <= best_em`, or equivalently the improvement branch should check `dev_f1 > best_f1 or dev_em > best_em`.
-
-**Fix**: Change the condition to check for lack of any improvement, e.g. swap `and` for `or`: `if dev_f1 < best_f1 or dev_em < best_em:` (or restructure to check for improvement first).
-
-**Chief Reasoning**:
-- *chief_a*: TrainTools/train.py line 148: `if dev_f1 < best_f1 and dev_em < best_em` requires BOTH metrics to strictly decline to increment patience. If either metric stays flat or improves even slightly, patience resets. This makes early stopping nearly impossible to trigger. Fix: use `or` or restructure to check for any improvement.
-- *chief_b*: TrainTools/train.py line ~148: `if dev_f1 < best_f1 and dev_em < best_em: patience += 1`. With 'and', patience only increments when BOTH metrics worsen. If either metric improves (or even ties at best), patience resets. Early stopping is effectively disabled since it's rare for both F1 and EM to simultaneously drop below their independent bests.
+**Invalidation Reason**: Verified via `git diff 99c1aec HEAD` that the proposed fix was never applied — the code was never modified from the fork. The original condition is identical to all three reference implementations (localminimum, NLPLearn, BangLiu) and does not constitute a bug. The original chief analysis was incorrect: `and` + `<` is the standard approach in all references. See also BUG-N014 (likewise invalidated).
 
 ---
 
@@ -1835,59 +2286,32 @@ These `H-` items are not strict code-defect entries. They are used to document d
 
 ## Big Architectural Fixes
 
-### BUG-B001: `Optimizers/optimizer.py` L16 + `Schedulers/scheduler.py` L29
+### BUG-B001 ↩️ Rolled Back: `Optimizers/optimizer.py` L16 + `Schedulers/scheduler.py` L29
 
 | Field | Value |
 |-------|-------|
-| Stage | stage1&2 (default train.py config uses Adam + lambda, which produces lr=1.0 and causes loss explosion — blocks Stage I trainability; correct warmup schedule is a Stage II mechanism requirement) |
-| Severity | critical |
+| Stage | N/A (rolled back) |
+| Severity | N/A |
 | Category | optimizer / lr_scheduler |
 | Assignment | Stage I - Task 2: Train/Eval Loop & Stage II - Task 2: LR Scheduler |
-| Confidence | high |
-| Status | ✅ Fixed (reviewed) |
+| Confidence | N/A |
+| Status | ↩️ Rolled Back |
 | Discovered by | manual testing + internal ablation and configuration tracing |
 
-**Symptom**: When using the default `train.py` configuration (`optimizer_name="adam"`, `scheduler_name="lambda"`), the effective learning rate is 1.0 throughout training, causing immediate loss explosion (loss > 10²⁷) and preventing any meaningful learning.
+**Original Symptom**: When using `optimizer_name="adam"` with `scheduler_name="lambda"`, effective learning rate is 1.0 throughout training, causing loss explosion (loss > 10²⁷).
 
-**Root Cause**: Two coupled design errors create a broken default configuration:
+**Original Diagnosis (now revised)**: We previously diagnosed this as a coupled bug — Adam hardcoded `lr=1.0` while `lambda_scheduler` returned a constant 1.0 factor, yielding `effective_lr = 1.0 × 1.0 = 1.0`.
 
-1. **`Optimizers/optimizer.py` L16**: The `adam` factory hardcodes `lr=1.0`, ignoring `args.learning_rate` (0.001). The inline comment claims *"its learning rate is entirely controlled by the paired warmup_lambda scheduler"*, implying the scheduler should output actual lr values as multiplicative factors.
+**Why Rolled Back**: After cross-referencing with peer implementations and reviewing the original codebase design:
 
-2. **`Schedulers/scheduler.py` L29**: The `lambda_scheduler` factory returns `LambdaLR(optimizer, lr_lambda=_constant_factor)` where `_constant_factor` always returns 1.0. There is no warmup implementation — the scheduler does nothing.
+1. **Adam `lr=1.0` is intentional by design.** The original code comment explicitly states: *"adam sets lr=1.0 because its learning rate is entirely controlled by the paired warmup_lambda scheduler"*. The schedulers are pre-assigned to specific optimizers, and Adam is designed to be paired with `lambda` scheduler where the lr_lambda function outputs the actual effective learning rate as a multiplicative factor.
 
-Combined effect: `effective_lr = 1.0 (base) × 1.0 (factor) = 1.0`. Adam with lr=1.0 causes parameter updates to overshoot catastrophically, producing loss in the range of 10¹⁸–10²⁷.
+2. **`lambda_scheduler` being constant 1.0 is the actual (unfixed) bug.** The `lambda_scheduler` was supposed to implement a meaningful warmup schedule (as implied by the `"warmup_lambda"` name in the comment), but the original implementation is a stub that always returns 1.0. This is a Stage II scheduler mechanism bug, not an architectural design error.
 
-**Why This Is a Big Architectural Fix**: The original code path assumes Adam's learning rate is scheduler-driven (base lr=1.0, scheduler outputs meaningful scaling), but the active scheduler path is a constant-factor stub. This is not a one-line typo; it is a **missing piece in the optimizer–scheduler contract**. The fix requires a clear architecture decision about where the effective learning rate should be controlled.
+3. **Our previous fix changed the wrong layer.** We changed Adam's base lr and added warmup logic, but the correct approach is to keep Adam `lr=1.0` and fix the `lambda_scheduler` to output a proper lr schedule. This is a Stage II task, not a Stage I blocker.
 
-**Internal Validation Notes (submission-safe wording)**:
+**Rolled Back Changes**:
+- `Optimizers/optimizer.py`: Reverted Adam factory from `lr=args.learning_rate` back to `lr=1.0` (original design).
+- `Schedulers/scheduler.py`: Removed `none_scheduler` and `"none"` from registry.
 
-Internal experiments and configuration tracing consistently indicate that a stable setup should satisfy:
-
-- Adam base learning rate should be configurable (default around `1e-3`) rather than fixed at `1.0`.
-- `lambda` scheduler should provide a meaningful warmup/scale curve, not a constant `1.0` factor.
-
-This directly matches observed behavior in this project: keeping `adam` at effective lr=1.0 causes extreme loss values, while configurable base lr with proper scaling restores trainability.
-
-**Fix Strategy — Changes to Original Architecture**:
-
-Two components were modified:
-
-1. **`Optimizers/optimizer.py`**: Change Adam factory from `lr=1.0` (hardcoded) to `lr=args.learning_rate` (configurable, default 0.001). This keeps optimizer behavior consistent with other optimizers and makes Adam compatible with any scheduler (`lambda`, `cosine`, `step`, `none`).
-
-   *Why*: The hardcoded `lr=1.0` assumed a scheduler design that was never implemented. Using `args.learning_rate` follows the standard PyTorch convention where the optimizer holds the base learning rate and the scheduler modulates it.
-
-2. **`Schedulers/scheduler.py`**: Replace the constant-factor `lambda_scheduler` with a non-trivial warmup implementation, e.g. logarithmic warmup:
-   `factor = (1/log(warmup)) × log(step+1)` during warmup, then `factor = 1.0` afterward. Recommended default warmup period: 1000 steps.
-
-   **Engineering constraint (checkpoint compatibility)**: The warmup callable must be serializable (picklable) for checkpoint save/load flows. Use a top-level callable object/function (e.g., a module-level class implementing `__call__`) instead of a local closure.
-
-   *Why*: Warmup reduces early-step instability when gradients are still volatile in randomly initialized models, improving the probability of stable convergence.
-
-**BUG Impact (if not fixed)**: The default training configuration (`optimizer_name="adam"`, `scheduler_name="lambda"`) produces lr=1.0, causing immediate loss explosion. Users must manually override to SGD + none to achieve any training, which defeats the purpose of providing Adam as the default optimizer.
-
-**FIX Impact (after fixed)**: The default configuration can produce a stable training curve (warmup to target lr, then steady updates) instead of immediate loss explosion. Optimizer–scheduler interaction becomes explicit and consistent with assignment expectations for functional and trainable pipelines.
-
-**Review Result**: ✅ The architectural fix set was verified in code:
-- `Optimizers/optimizer.py`: Adam now uses `lr=args.learning_rate`.
-- `Schedulers/scheduler.py`: `lambda_scheduler` now uses a warmup function instead of a constant 1.0 factor.
-- `Schedulers/scheduler.py`: warmup is implemented via a top-level callable (`_WarmupFactor`), which is checkpoint-serialization safe.
+**Current State (resolved)**: `lambda_scheduler` now implements linear warmup via `_WarmupFactor` class (picklable). With `Adam(lr=1.0)` + `lambda_scheduler`, the effective lr follows the QANet paper schedule: linear warmup from 0 to `learning_rate` (0.001) over `warmup_steps` (1000), then constant. See BUG-N001.

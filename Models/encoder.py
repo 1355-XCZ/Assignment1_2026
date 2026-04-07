@@ -75,13 +75,13 @@ class MultiHeadAttention(nn.Module):
             mask = mask.bool()
         attn_mask = mask.unsqueeze(1).expand(-1, length, -1).repeat(self.num_heads, 1, 1)  # [B*h, L, L]
 
-        attn = torch.bmm(q, k.transpose(1, 2))
+        attn = torch.bmm(q, k.transpose(1, 2)) * self.scale
         attn = mask_logits(attn, attn_mask)
         attn = F.softmax(attn, dim=2)
         attn = self.drop(attn)
 
         out = torch.bmm(attn, v)  # [B*h, L, d_k]
-        out = out.view(batch_size, self.num_heads, length, self.d_k)
+        out = out.view(self.num_heads, batch_size, length, self.d_k)
         out = out.permute(1, 2, 0, 3).contiguous().view(batch_size, length, self.d_model)
         out = self.fc(out)
         out = self.drop(out)
@@ -92,42 +92,60 @@ class EncoderBlock(nn.Module):
     def __init__(self, d_model: int, num_heads: int, dropout: float, conv_num: int, k: int, length: int, init_name: str = "kaiming", act_name: str = "relu", norm_name: str = "layer_norm", norm_groups: int = 8):
         super().__init__()
         self.convs = nn.ModuleList([DepthwiseSeparableConv(d_model, d_model, k, init_name=init_name) for _ in range(conv_num)])
-        # Stochastic-depth dropout: p scales linearly with layer depth.
-        self.conv_drops = nn.ModuleList([Dropout(dropout * (i + 1) / conv_num) for i in range(conv_num)])
-        self.drop = Dropout(dropout)
         self.self_att = MultiHeadAttention(d_model, num_heads, dropout)
-        self.fc = nn.Linear(d_model, d_model, bias=True)
+        self.fc1 = nn.Linear(d_model, d_model, bias=True)
+        self.fc2 = nn.Linear(d_model, d_model, bias=True)
         self.pos = PosEncoder(d_model, length)
         self.act = get_activation(act_name)
+        self.dropout = dropout
+        self.conv_num = conv_num
 
-        # Normalization over [C, L]; fixed length required for layer_norm.
+        # [OLD] Normalization over [C, L]; fixed length required for layer_norm.
+        # [FIX] Normalization: LayerNorm over C (channel-only); GroupNorm over [C/G, L].
+        # normb → conv[0]; norms[0..conv_num-2] → conv[1..conv_num-1]; norms[conv_num-1] → self-attn; norme → FFN
         self.normb = get_norm(norm_name, d_model, length, num_groups=norm_groups)
         self.norms = nn.ModuleList([get_norm(norm_name, d_model, length, num_groups=norm_groups) for _ in range(conv_num)])
         self.norme = get_norm(norm_name, d_model, length, num_groups=norm_groups)
-        self.L = conv_num
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    # [OLD] element-wise Dropout only on even conv sublayers, no layer dropout
+    # [FIX] Paper Section 4.1: stochastic depth — sublayer l survival prob p_l = 1-(l/L)(1-p_L)
+    def _layer_dropout(self, inputs: torch.Tensor, residual: torch.Tensor, drop_prob: float) -> torch.Tensor:
+        if self.training and drop_prob > 0:
+            if torch.empty(1).uniform_(0, 1).item() < drop_prob:
+                return residual
+            return F.dropout(inputs, p=drop_prob, training=True) + residual
+        return inputs + residual
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor, l: int = 1, total_layers: int = 0) -> torch.Tensor:
+        # drop_rate per sublayer: dropout * l / L (0 when stochastic depth is disabled)
+        drop_scale = self.dropout / total_layers if total_layers > 0 else 0.0
         out = self.pos(x)
-        res = out
-        out = self.normb(out)
 
         for i, conv in enumerate(self.convs):
+            res = out
+            out = self.normb(out) if i == 0 else self.norms[i - 1](out)
+            if i % 2 == 0:
+                out = F.dropout(out, p=self.dropout, training=self.training)
             out = conv(out)
             out = self.act(out)
-            out = out + res
-            if (i + 1) % 2 == 0:
-                out = self.conv_drops[i](out)
-            res = out
-            out = self.norms[i](out)
+            out = self._layer_dropout(out, res, drop_scale * l)
+            l += 1
 
+        res = out
+        out = self.norms[self.conv_num - 1](out)
+        out = F.dropout(out, p=self.dropout, training=self.training)
         out = self.self_att(out, mask)
-        out = res
-        out = self.drop(out)
+        out = self._layer_dropout(out, res, drop_scale * l)
+        l += 1
 
         res = out
         out = self.norme(out)
-        out = self.fc(out.transpose(1, 2)).transpose(1, 2)
+        out = F.dropout(out, p=self.dropout, training=self.training)
+        out = out.transpose(1, 2)
+        out = self.fc1(out)
         out = self.act(out)
-        out = out + res
-        out = self.drop(out)
+        out = self.fc2(out)
+        out = out.transpose(1, 2)
+        out = self._layer_dropout(out, res, drop_scale * l)
+
         return out

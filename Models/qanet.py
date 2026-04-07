@@ -3,7 +3,8 @@ import copy
 import torch
 import torch.nn as nn
 
-from .conv import DepthwiseSeparableConv
+from .conv import Conv1d, DepthwiseSeparableConv
+from .Initializations import initializations, constant_
 from .embedding import Embedding
 from .encoder import EncoderBlock
 from .attention import CQAttention
@@ -40,18 +41,22 @@ class QANet(nn.Module):
         )
         self.word_emb = nn.Embedding.from_pretrained(
             torch.tensor(word_mat, dtype=torch.float32),
-            freeze=False
+            freeze=True
         )
 
         self.emb = Embedding(d_word, d_char, dropout, dropout_char, init_name=init_name, act_name=act_name)
-        self.context_conv = DepthwiseSeparableConv(d_word + d_char, d_model, 5, init_name=init_name)
-        self.question_conv = DepthwiseSeparableConv(d_word + d_char, d_model, 5, init_name=init_name)
+        # [OLD] DepthwiseSeparableConv(d_word + d_char, d_model, 5)
+        # [FIX] Paper Section 2: "mapped to d by a one-dimensional convolution" — use Conv1d(k=1)
+        self.proj_conv = Conv1d(d_word + d_char, d_model, kernel_size=1, bias=False)
+        initializations[init_name](self.proj_conv.weight)
 
-        self.c_emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=len_c, init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
-        self.q_emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=len_q, init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
+        self.emb_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=4, k=7, length=max(len_c, len_q), init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
 
         self.cq_att = CQAttention(d_model, dropout)
-        self.cq_resizer = DepthwiseSeparableConv(d_model * 4, d_model, 5, init_name=init_name)
+        # [OLD] DepthwiseSeparableConv(d_model * 4, d_model, 5)
+        # [FIX] Paper Section 4: input [c,a,c⊙a,c⊙b] projected to d_model — use Conv1d(k=1)
+        self.cq_resizer = Conv1d(d_model * 4, d_model, kernel_size=1, bias=False)
+        initializations[init_name](self.cq_resizer.weight)
 
         base_enc = EncoderBlock(d_model, num_heads, dropout, conv_num=2, k=5, length=len_c, init_name=init_name, act_name=act_name, norm_name=norm_name, norm_groups=norm_groups)
         self.model_enc_blks = nn.ModuleList([copy.deepcopy(base_enc) for _ in range(7)])
@@ -66,25 +71,32 @@ class QANet(nn.Module):
         Qw, Qc = self.word_emb(Qwid), self.char_emb(Qcid)
 
         C, Q = self.emb(Cc, Cw), self.emb(Qc, Qw)
-        C = self.context_conv(C)
-        Q = self.question_conv(Q)
+        C = self.proj_conv(C)
+        Q = self.proj_conv(Q)
 
-        Ce = self.c_emb_enc(C, cmask)
-        Qe = self.q_emb_enc(Q, qmask)
+        # Embedding encoder: 1 block, (4 conv + 1 attn + 1 ffn) = 6 sublayers
+        emb_total = self.emb_enc.conv_num + 2
+        Ce = self.emb_enc(C, cmask, l=1, total_layers=emb_total)
+        Qe = self.emb_enc(Q, qmask, l=1, total_layers=emb_total)
 
         X = self.cq_att(Ce, Qe, cmask, qmask)
 
+        # Model encoder: 7 blocks, each (2 conv + 1 attn + 1 ffn) = 4 sublayers, total = 28
+        num_model_blks = len(self.model_enc_blks)
+        sublayers_per_blk = self.model_enc_blks[0].conv_num + 2
+        model_total = sublayers_per_blk * num_model_blks
+
         M1 = self.cq_resizer(X)
-        for enc in self.model_enc_blks:
-            M1 = enc(M1, cmask)
+        for i, enc in enumerate(self.model_enc_blks):
+            M1 = enc(M1, cmask, l=i * sublayers_per_blk + 1, total_layers=model_total)
 
         M2 = M1
-        for enc in self.model_enc_blks:
-            M2 = enc(M2, cmask)
+        for i, enc in enumerate(self.model_enc_blks):
+            M2 = enc(M2, cmask, l=i * sublayers_per_blk + 1, total_layers=model_total)
 
         M3 = M2
-        for enc in self.model_enc_blks:
-            M3 = enc(M3, cmask)
+        for i, enc in enumerate(self.model_enc_blks):
+            M3 = enc(M3, cmask, l=i * sublayers_per_blk + 1, total_layers=model_total)
 
         p1, p2 = self.out(M1, M2, M3, cmask)
         return p1, p2

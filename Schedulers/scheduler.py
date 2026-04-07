@@ -1,3 +1,5 @@
+import math
+
 from Schedulers.cosine_scheduler import CosineAnnealingLR
 from Schedulers.lambda_scheduler import LambdaLR
 from Schedulers.step_scheduler import StepLR
@@ -22,34 +24,36 @@ def step_scheduler(optimizer, args):
     )
 
 
-import math
-
-
-def _constant_factor(_step):
-    return 1.0
-
-
 class _WarmupFactor:
-    """Logarithmic warmup following the QANet paper recipe. Picklable."""
-    def __init__(self, warmup_steps):
-        self.warmup_steps = warmup_steps
-        self.cr = 1.0 / math.log(warmup_steps)
+    """Picklable callable for LambdaLR: inverse-exponential (log) warmup then constant.
 
-    def __call__(self, step):
-        if step < self.warmup_steps:
-            return self.cr * math.log(step + 1)
-        return 1.0
+    Paired with Adam(lr=1.0), the effective lr at step t is:
+        warmup phase (t < W):  lr(t) = learning_rate * log(t + 1) / log(W)
+        constant phase:        lr(t) = learning_rate
+
+    References:
+        - QANet-localminimum / NLPLearn:
+              lr = min(0.001, 0.001 / log(999) * log(step + 1))
+        - QANet-BangLiu:
+              cr = 1 / log(W);  factor = cr * log(step + 1) if step < W else 1
+    """
+    # [OLD] linear warmup: learning_rate * step / warmup_steps
+    # [FIX] inverse-exponential warmup: learning_rate * log(step+1) / log(W)
+    def __init__(self, warmup_steps: int, learning_rate: float):
+        self.warmup_steps = warmup_steps
+        self.learning_rate = learning_rate
+        self._inv_log_w = 1.0 / math.log(warmup_steps) if warmup_steps > 1 else 1.0
+
+    def __call__(self, step: int) -> float:
+        if self.warmup_steps > 0 and step < self.warmup_steps:
+            return self.learning_rate * self._inv_log_w * math.log(step + 1)
+        return self.learning_rate
 
 
 def lambda_scheduler(optimizer, args):
-    """LambdaLR with logarithmic warmup following the QANet paper recipe."""
-    warmup = getattr(args, "lr_warm_up_num", 1000)
-    return LambdaLR(optimizer, lr_lambda=_WarmupFactor(warmup))
-
-
-def none_scheduler(optimizer, args):
-    """No-op scheduler — learning rate stays constant."""
-    return LambdaLR(optimizer, lr_lambda=_constant_factor)
+    """LambdaLR with inverse-exponential warmup then constant lr (QANet schedule)."""
+    warmup_steps = getattr(args, "warmup_steps", 1000)
+    return LambdaLR(optimizer, lr_lambda=_WarmupFactor(warmup_steps, args.learning_rate))
 
 
 # ── Registry ─────────────────────────────────────────────────────────────────
@@ -58,5 +62,4 @@ schedulers = {
     "cosine":  cosine_scheduler,
     "step":    step_scheduler,
     "lambda":  lambda_scheduler,
-    "none":    none_scheduler,
 }

@@ -104,11 +104,16 @@ def run_eval(model, dataset, eval_file, num_batches, batch_size,
         loss = loss_fn(p1, p2, y1, y2)
         losses.append(float(loss.item()))
 
-        yp1 = torch.argmax(p1, dim=1)
-        yp2 = torch.argmax(p2, dim=1)
-        yps = torch.stack([yp1, yp2], dim=1)
-        ymin, _ = torch.min(yps, dim=1)
-        ymax, _ = torch.max(yps, dim=1)
+        p1_log = torch.nn.functional.log_softmax(p1, dim=1)
+        p2_log = torch.nn.functional.log_softmax(p2, dim=1)
+        outer = p1_log.unsqueeze(2) + p2_log.unsqueeze(1)  # [B, L, L] log(p1_s * p2_e)
+        mask = torch.triu(torch.ones(outer.size(-2), outer.size(-1), device=outer.device, dtype=torch.bool))
+        outer = outer.masked_fill(~mask, float('-inf'))  # s <= e
+        flat = outer.view(outer.size(0), -1)
+        idx = torch.argmax(flat, dim=1)
+        L = p1.size(1)
+        ymin = idx // L
+        ymax = idx % L
 
         answer_dict_, _ = convert_tokens(eval_file, ids.tolist(), ymin.tolist(), ymax.tolist())
         answer_dict.update(answer_dict_)
