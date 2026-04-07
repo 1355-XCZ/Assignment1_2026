@@ -1573,13 +1573,13 @@ Reference implementations confirmed:
 
 **Root Cause**: `save_checkpoint` writes to a single fixed filename with no mechanism to preserve the best model. The training loop does not track whether the current evaluation is a new best.
 
-**Reference Implementations**: All three (localminimum, NLPLearn, BangLiu) maintain an `is_best` flag and save a separate `best.model` / `best.pt` whenever a new best is achieved.
+**Reference Implementations**: All three (localminimum, NLPLearn, BangLiu) maintain an `is_best` flag and only persist the best checkpoint for final evaluation.
 
-**Fix**: Added `is_best` flag to `train.py` (set `True` when `dev_f1` or `dev_em` exceeds the running best) and an `is_best=False` parameter to `save_checkpoint` in `train_utils.py` that additionally saves `model_best.pt` when `True`.
+**Fix**: Added `is_best` flag to `train.py` (set `True` when `dev_f1` or `dev_em` exceeds the running best) and an `is_best=False` parameter to `save_checkpoint` in `train_utils.py`. When `is_best=False`, `save_checkpoint` returns immediately without writing anything. Only when `is_best=True` does it save `model.pt`. This ensures `model.pt` is always the best model.
 
 **BUG Impact (if not fixed)**: After overfitting, the best model is overwritten by worse checkpoints — final evaluation uses a suboptimal model.
 
-**FIX Impact (after fixed)**: Best model is always preserved in `model_best.pt`, matching all three reference implementations.
+**FIX Impact (after fixed)**: `model.pt` always contains the best-performing checkpoint. No redundant saves, no separate `model_best.pt` needed. Compatible with the original `evaluate(ckpt_name="model.pt")` without any changes.
 
 ---
 
