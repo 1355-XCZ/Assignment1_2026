@@ -27,6 +27,19 @@ class RestoreSpec:
     component: str = "output"  # "conv_0", "conv_1", "self_attn", "ffn", "output"
 
 
+@dataclass
+class SkipSpec:
+    """Specifies which components to zero-out (ablate) in the Model Encoder.
+
+    global_skip: set of component types to skip everywhere, e.g. {"conv", "self_attn", "ffn"}.
+        "conv" skips all conv_i layers.
+    block_skip: optional (pass_idx, block_idx, component_type) to skip in ONE block only.
+        component_type is "conv", "self_attn", or "ffn".
+    """
+    global_skip: Optional[set] = None
+    block_skip: Optional[tuple] = None  # (pass_idx, block_idx, "conv"|"self_attn"|"ffn")
+
+
 # ---------------------------------------------------------------------------
 # Encoder block forward with collection / restoration
 # ---------------------------------------------------------------------------
@@ -34,10 +47,11 @@ class RestoreSpec:
 def _encoder_block_forward(block, x, mask, l, total_layers,
                            collect: bool = False,
                            clean_acts: Optional[dict] = None,
-                           restore_component: Optional[str] = None):
+                           restore_component: Optional[str] = None,
+                           skip_components: Optional[set] = None):
     """
     Replicate EncoderBlock.forward() with optional activation
-    collection and single-component restoration.
+    collection, single-component restoration, and component ablation.
 
     Parameters
     ----------
@@ -49,6 +63,8 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
     collect : if True, record each sub-layer output into `collected`
     clean_acts : dict of clean sub-layer outputs (needed when restoring)
     restore_component : which component to restore (None = no restore)
+    skip_components : set of component names to zero-out for ablation,
+        e.g. {"conv"} zeros all conv_i, {"self_attn"}, {"ffn"}
 
     Returns
     -------
@@ -56,6 +72,7 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
     collected : dict of sub-layer outputs (empty if collect=False)
     """
     collected = {}
+    _skip = skip_components or set()
     drop_scale = block.dropout / total_layers if total_layers > 0 else 0.0
     out = block.pos(x)
 
@@ -72,6 +89,8 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
             collected[comp_name] = out.detach().clone()
         if restore_component == comp_name and clean_acts is not None:
             out = clean_acts[comp_name]
+        if "conv" in _skip or comp_name in _skip:
+            out = torch.zeros_like(out)
 
         out = block._layer_dropout(out, res, drop_scale * l)
         l += 1
@@ -86,6 +105,8 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
         collected["self_attn"] = out.detach().clone()
     if restore_component == "self_attn" and clean_acts is not None:
         out = clean_acts["self_attn"]
+    if "self_attn" in _skip:
+        out = torch.zeros_like(out)
 
     out = block._layer_dropout(out, res, drop_scale * l)
     l += 1
@@ -104,6 +125,8 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
         collected["ffn"] = out.detach().clone()
     if restore_component == "ffn" and clean_acts is not None:
         out = clean_acts["ffn"]
+    if "ffn" in _skip:
+        out = torch.zeros_like(out)
 
     out = block._layer_dropout(out, res, drop_scale * l)
 
@@ -129,6 +152,8 @@ def qanet_forward(
     # Restoration
     clean_acts: Optional[dict] = None,
     restore_spec: Optional[RestoreSpec] = None,
+    # Ablation
+    skip_spec: Optional['SkipSpec'] = None,
 ):
     """
     Run QANet with optional corruption and/or restoration.
@@ -255,6 +280,16 @@ def qanet_forward(
                 _blk_clean = clean_acts.get("model_enc", {}).get(key, {}).get(blk_key)
                 _blk_comp = restore_spec.component
 
+            # Determine skip components for this block
+            _blk_skip = None
+            if skip_spec is not None:
+                if skip_spec.global_skip:
+                    _blk_skip = skip_spec.global_skip
+                elif skip_spec.block_skip:
+                    sp, sb, sc = skip_spec.block_skip
+                    if sp == pass_idx and sb == blk_idx:
+                        _blk_skip = {sc}
+
             current, blk_acts = _encoder_block_forward(
                 enc, current, cmask,
                 l=blk_idx * sub_per_blk + 1,
@@ -262,6 +297,7 @@ def qanet_forward(
                 collect=collect,
                 clean_acts=_blk_clean,
                 restore_component=_blk_comp,
+                skip_components=_blk_skip,
             )
 
             if collect:

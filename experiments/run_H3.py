@@ -154,7 +154,7 @@ def linear_cka(X, Y):
     hsic_xy = (XtY ** 2).sum()
     hsic_xx = (XtX ** 2).sum()
     hsic_yy = (YtY ** 2).sum()
-    denom = (hsic_xx * hsic_yy).sqrt()
+    denom = np.sqrt(float(hsic_xx * hsic_yy))
     if denom < 1e-12:
         return 0.0
     return float(hsic_xy / denom)
