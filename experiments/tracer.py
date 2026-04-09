@@ -40,7 +40,8 @@ class SkipSpec:
     """
     global_skip: Optional[set] = None
     block_skip: Optional[tuple] = None  # (pass_idx, block_idx, "conv"|"self_attn"|"ffn")
-    mode: str = "zero"  # "zero" or "noise"
+    mode: str = "zero"  # "zero", "noise", or "mean"
+    mean_acts: Optional[dict] = None  # {(pass_idx, block_idx, comp): tensor} for mode="mean"
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +53,9 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
                            clean_acts: Optional[dict] = None,
                            restore_component: Optional[str] = None,
                            skip_components: Optional[set] = None,
-                           skip_mode: str = "zero"):
+                           skip_mode: str = "zero",
+                           skip_mean_acts: Optional[dict] = None,
+                           block_id: Optional[tuple] = None):
     """
     Replicate EncoderBlock.forward() with optional activation
     collection, single-component restoration, and component ablation.
@@ -79,7 +82,16 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
     _skip = skip_components or set()
     drop_scale = block.dropout / total_layers if total_layers > 0 else 0.0
 
-    def _ablate(tensor):
+    def _ablate(tensor, comp_name=None):
+        if skip_mode == "mean" and skip_mean_acts and block_id:
+            key = (*block_id, comp_name)
+            if key in skip_mean_acts:
+                mean_val = skip_mean_acts[key]
+                L_cur = tensor.shape[-1]
+                mv = mean_val[..., :L_cur] if mean_val.shape[-1] >= L_cur else F.pad(mean_val, (0, L_cur - mean_val.shape[-1]))
+                if mv.dim() < tensor.dim():
+                    mv = mv.unsqueeze(0).expand_as(tensor)
+                return mv
         if skip_mode == "noise":
             noise = torch.randn_like(tensor)
             norm_orig = tensor.norm()
@@ -103,7 +115,7 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
         if restore_component == comp_name and clean_acts is not None:
             out = clean_acts[comp_name]
         if "conv" in _skip or comp_name in _skip:
-            out = _ablate(out)
+            out = _ablate(out, comp_name)
 
         out = block._layer_dropout(out, res, drop_scale * l)
         l += 1
@@ -119,7 +131,7 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
     if restore_component == "self_attn" and clean_acts is not None:
         out = clean_acts["self_attn"]
     if "self_attn" in _skip:
-        out = _ablate(out)
+        out = _ablate(out, "self_attn")
 
     out = block._layer_dropout(out, res, drop_scale * l)
     l += 1
@@ -139,7 +151,7 @@ def _encoder_block_forward(block, x, mask, l, total_layers,
     if restore_component == "ffn" and clean_acts is not None:
         out = clean_acts["ffn"]
     if "ffn" in _skip:
-        out = _ablate(out)
+        out = _ablate(out, "ffn")
 
     out = block._layer_dropout(out, res, drop_scale * l)
 
@@ -304,6 +316,7 @@ def qanet_forward(
                         _blk_skip = {sc}
 
             _skip_mode = skip_spec.mode if (skip_spec is not None and _blk_skip) else "zero"
+            _skip_means = skip_spec.mean_acts if (skip_spec is not None and skip_spec.mean_acts) else None
 
             current, blk_acts = _encoder_block_forward(
                 enc, current, cmask,
@@ -314,6 +327,8 @@ def qanet_forward(
                 restore_component=_blk_comp,
                 skip_components=_blk_skip,
                 skip_mode=_skip_mode,
+                skip_mean_acts=_skip_means,
+                block_id=(pass_idx, blk_idx),
             )
 
             if collect:
