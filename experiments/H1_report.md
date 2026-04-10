@@ -11,9 +11,9 @@ Position Encoding → Conv_0 → Conv_1 → Self-Attention → FFN
 
 The QANet paper's ablation study (Table 5, Yu et al. 2018) shows that convolution contributes more to performance than Self-Attention (−2.7 F1 vs −1.3 F1 upon removal, measured after retraining). However, the paper treats both convolution layers as a single unit and does not examine Conv\_0 and Conv\_1 separately.
 
-By separating the two through eval-time ablation and causal tracing, we find a clear importance ordering:
+By separating the two through eval-time ablation and causal tracing, both methods agree that Conv\_1 is the most important component by a large margin. Ablation (measuring necessity) yields:
 
-> **Conv\_1 > Self-Attention > FFN > Conv\_0**
+> **Conv\_1 ≫ Self-Attention > FFN > Conv\_0**
 
 Conv\_1 is the **most important** of all four component types (−32.54 F1 upon removal), while Conv\_0 is the **least important** (−1.09 F1) — a 30× gap. Yet Conv\_0 and Conv\_1 are **architecturally identical**: both are depthwise separable convolutions with kernel size k=5 and the same hidden dimension, trained end-to-end under the same objective.
 
@@ -64,11 +64,11 @@ Additionally, we perform per-block ablation to examine how importance is distrib
 
 ### 1b. Per-Block Ablation
 
-**Method**: Remove conv (both) or self\_attn in one (pass, block). 42 configs, 2,048-sample subset.
+**Method**: Remove conv (both) or self\_attn in one (pass, block). 42 configs, full dev set (10,465 samples).
 
-**Finding 3**: Max single-block impact = −1.28 F1; collective removal = −43.11. A 34× gap reveals **distributed redundancy**: no single block is essential, but together they are indispensable.
+**Finding 3**: Max single-block impact = −1.23 F1 (p0\_b0\_conv); collective removal = −43.11. A 35× gap reveals **distributed redundancy**: no single block is essential, but together they are indispensable.
 
-**Finding 4**: Early passes matter more: M1 (−0.23 avg) >> M2 (−0.03) >> M3 (+0.01).
+**Finding 4**: Early passes matter more: M1 (−0.16 avg) >> M2 (−0.06) >> M3 (+0.01).
 
 ### 1c. Causal Tracing (Meng et al., 2022)
 
@@ -85,7 +85,7 @@ Additionally, we perform per-block ablation to examine how importance is distrib
 
 ### Confound Check: Output Magnitude
 
-Sub-layer L2 norms: Conv\_1 (250) > Conv\_0 (113) > FFN (104) > Attn (82). Pearson r(norm, AIE) = 0.895.
+Sub-layer L2 norms: Conv\_1 (250) > Conv\_0 (113) > FFN (104) > Attn (82). Pearson r(norm, AIE) = 0.893.
 
 Could the gap simply reflect Conv\_1 having larger outputs? For Conv\_0/FFN/Attn, norm ordering (Conv\_0 > FFN > Attn) is **inversely** correlated with ablation ordering (Attn > FFN > Conv\_0) — ruling out magnitude as the driver for these three. Conv\_1's dominance direction is robust; the precise ratio over Attn (2–7×) carries uncertainty from norm co-correlation.
 
@@ -122,11 +122,12 @@ The most direct explanation would be that Conv\_1 encodes critical information t
 
 | Metric | Conv\_0 | Conv\_1 | Conv\_1/Conv\_0 | Attn | FFN |
 |---|---|---|---|---|---|
-| Local Contrast | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
-| Norm CoV | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
-| Effective Rank | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+| Token Norm Variance | 4.57 | 14.48 | **3.2×** | 1.62 | 14.79 |
+| Norm CoV | 0.345 | 0.216 | 0.6× | 0.176 | 0.410 |
+| Local Contrast (1−cos) | 0.323 | 0.305 | 0.9× | 0.103 | 0.341 |
+| Effective Rank | 32.5 | 43.2 | **1.3×** | 8.6 | 26.5 |
 
-**Finding 7**: [Fill after execution.] Conv\_1 produces representations where adjacent tokens are more distinguishable (higher local contrast), activation magnitudes vary more across positions (higher CoV), and the output occupies a higher-dimensional subspace (higher effective rank). Conv\_0's output is closer to a near-identity transformation — it applies minimal change to its input.
+**Finding 7**: The results show a differentiated pattern. Conv\_1 is significantly higher than Conv\_0 on two dimensions: token-level amplitude variation (Norm Variance 3.2×) and output subspace dimensionality (Effective Rank 1.3×). This means Conv\_1 produces outputs with much greater magnitude differences across positions and utilizes more feature dimensions. However, in directional distinctiveness (Local Contrast) and normalized variation (Norm CoV), Conv\_0 is actually slightly higher. This indicates Conv\_1's transformation is primarily characterized by **amplitude modulation and dimensional utilization**, rather than directional separation of adjacent tokens. Conv\_0's outputs, while more directionally diverse, have minimal overall impact (ablation only −1.09 F1), suggesting this directional diversity does not critically contribute to downstream computation.
 
 ### 2c. Spatial Structure (Local Coherence)
 
@@ -134,18 +135,20 @@ The most direct explanation would be that Conv\_1 encodes critical information t
 
 | Component | lag=1 | lag=2 | lag=3 | lag=5 | decay(1→5) |
 |---|---|---|---|---|---|
-| Conv\_1 | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
-| Conv\_0 | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
-| Self-Attn | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
-| FFN | [TBD] | [TBD] | [TBD] | [TBD] | [TBD] |
+| Conv\_0 | 0.679 | 0.602 | 0.597 | 0.571 | 0.109 |
+| Conv\_1 | 0.667 | 0.585 | 0.610 | 0.608 | 0.058 |
+| Self-Attn | 0.841 | 0.819 | 0.810 | 0.804 | 0.037 |
+| FFN | 0.595 | 0.564 | 0.562 | 0.556 | 0.039 |
 
-**Finding 8**: [Fill after execution.] The autocorrelation decay profile quantifies how each component structures information spatially. Comparing Conv\_1 vs Conv\_0 directly reveals whether they impose different spatial patterns despite identical kernel size.
+**Finding 8**: Conv\_0's decay (0.109) is nearly double Conv\_1's (0.058), indicating Conv\_0's output has stronger locality — high similarity among nearby tokens that drops off with distance. Conv\_1's flatter decay means its output is more spatially uniform. Self-Attention has the highest overall similarity (0.84) with near-zero decay (0.037), consistent with its global mixing role. FFN has the lowest similarity (0.60), reflecting position-wise independent transformation.
 
 ### Experiment 2 Summary
 
-The functional difference between Conv\_1 and Conv\_0 is not in information content (both outputs contain similar task-relevant information) but in **representational structure**: Conv\_1 applies a strong active transformation to its input (high discriminativity, high effective rank), while Conv\_0 operates close to an identity mapping.
+The functional difference between Conv\_1 and Conv\_0 is not in information content (both outputs contain similar task-relevant information, AUC gap only 0.025) but in **specific dimensions of representational structure**. Conv\_1's output has significantly higher token-level amplitude variation (Norm Variance 3.2×) and subspace dimensionality (Effective Rank 1.3×) compared to Conv\_0, but the two are similar in directional distinctiveness (Local Contrast). Combined with spatial coherence data, Conv\_1's output is more spatially uniform (decay 0.058) while Conv\_0 is more localized (decay 0.109). In summary, Conv\_1's transformation is characterized by: **assigning greater amplitude differences across token positions while organizing features in a higher-dimensional subspace**.
 
-This observation alone does not explain the **root cause** of the gap — Conv\_1's distinctive representational structure could arise from its pipeline position (receiving Conv\_0's output rather than raw input), training dynamics, or their interaction. Separating these factors would require controlled experiments (e.g., swapping the two layers' learned weights post-training and testing whether importance follows weights or position), which is prohibitively expensive in time and compute under Colab quota limits. What this experiment does establish is a key fact: **Conv\_1 and Conv\_0 produce qualitatively different outputs**. Experiment 3 examines whether this structural difference directly impacts downstream Self-Attention computation.
+The divergence across metrics has diagnostic value. Conv\_0 scores slightly higher than Conv\_1 on directional distinctiveness (Local Contrast) and normalized variation (Norm CoV), yet Conv\_0 is nearly dispensable (−1.09 F1) — this rules out directional distinctiveness as a sufficient condition for the importance gap. The two dimensions where Conv\_1 holds a clear advantage — amplitude modulation and subspace dimensionality — are therefore candidate mechanisms for the gap. This inference is consistent with dot-product attention mechanics: \( QK^T \) scores are sensitive to input magnitude differences, and higher-dimensional inputs allow Q, K projections to carry richer discriminative signals. Notably, FFN has nearly identical Norm Variance (14.79) to Conv\_1 but is far less important (−3.32 vs −32.54 F1) — FFN sits downstream of Self-Attention, so its output properties do not directly influence attention computation. This further indicates that amplitude modulation's impact depends on pipeline position; the property alone is not a sufficient condition. The inference has not been verified through direct intervention (e.g., artificially injecting high-amplitude features and observing attention changes) and remains correlational.
+
+This observation alone does not explain the **root cause** of the gap — Conv\_1's distinctive representational structure could arise from its pipeline position (receiving Conv\_0's output rather than raw input), training dynamics, or their interaction. Separating these factors would require controlled experiments (e.g., swapping learned weights post-training, or retraining with altered architectural order), which is prohibitively expensive under Colab quota limits. What this experiment does establish is a key fact: **Conv\_1 and Conv\_0 produce measurably different outputs, particularly in amplitude distribution and subspace dimensionality**. Experiment 3 examines the concrete impact of removing these features on downstream Self-Attention computation.
 
 ---
 
@@ -184,9 +187,9 @@ This observation alone does not explain the **root cause** of the gap — Conv\_
 
 An intuitive objection is: does Conv\_1 removal affect attention more simply because Conv\_1 is Self-Attention's immediate upstream neighbor (0 layers apart), while Conv\_0 is buffered by Conv\_1 in between?
 
-Our existing data addresses this. Conv\_0 is also an immediate upstream neighbor — of Conv\_1 (0 layers apart). Yet removing Conv\_0 causes only −1.09 F1 (Experiment 1). If being a direct upstream neighbor were sufficient to produce large impact, removing Conv\_0 should substantially impair Conv\_1's computation — but it does not. The reason, as shown in Experiment 2, is that Conv\_0 operates close to an identity transformation: removing it barely changes the input Conv\_1 receives.
+Our existing data addresses this. Conv\_0 is also an immediate upstream neighbor — of Conv\_1 (0 layers apart). Yet removing Conv\_0 causes only −1.09 F1 (Experiment 1). If being a direct upstream neighbor were sufficient to produce large impact, removing Conv\_0 should substantially impair Conv\_1's computation — but it does not. Experiment 2 shows that Conv\_0 does apply a non-trivial transformation (Local Contrast = 0.323, Effective Rank = 32.5 — not an identity mapping), but its contribution is compensable: the residual connection ensures Conv\_1 still receives the core information flow, and Conv\_0's additional contribution is not indispensable to downstream computation.
 
-Therefore, **pipeline proximity is necessary but not sufficient for large impact**. The case of Conv\_0 demonstrates that a direct upstream neighbor operating as a near-identity transformation can be removed with minimal consequence. Conv\_1 removal collapses attention because Conv\_1 both occupies the direct upstream position **and** applies a substantial active transformation to its input (Experiment 2). Distance and function act together; neither alone is sufficient.
+Therefore, **pipeline proximity is necessary but not sufficient for large impact**. What matters is whether the downstream layer **irreplaceably depends** on the upstream layer's specific output. Conv\_1→Attention: attention computation critically relies on Conv\_1's high-amplitude, high-dimensional features (Experiment 2); removal causes pattern collapse. Conv\_0→Conv\_1: Conv\_1 does not critically depend on Conv\_0's specific output (−1.09 F1 upon Conv\_0 removal); its contribution is compensable via the residual pathway. Distance and functional dependence jointly determine impact.
 
 **Residual limitation**: Globally removing Conv\_1 alters the entire residual stream, so attention degradation reflects not only the direct Conv\_1→Attention impact but also indirect effects propagated through the residual stream. Fully isolating the direct impact is beyond the capacity of eval-time experiments.
 
@@ -198,17 +201,17 @@ Therefore, **pipeline proximity is necessary but not sufficient for large impact
 
 **Research question**: Conv\_0 and Conv\_1 share identical architecture yet differ 30× in importance. What mechanistic differences between them explain this gap?
 
-**Answer**: The directly observable cause of the gap is that Conv\_1 applies a substantial active transformation to its input, while Conv\_0 operates close to an identity mapping. Both encode similar task-relevant information (AUC gap only 0.025), but their outputs differ qualitatively in representational structure. When Conv\_1 is removed, Self-Attention's attention patterns collapse onto wrong positions — this is the proximate mechanism of the performance breakdown.
+**Answer**: The directly observable cause lies in the different transformations Conv\_1 and Conv\_0 apply, and Self-Attention's irreplaceable dependence on Conv\_1's specific output. Both layers encode similar task-relevant information (AUC gap only 0.025), but Conv\_1 produces outputs with significantly higher token-level amplitude variation (Norm Variance 3.2×) and subspace dimensionality (Effective Rank 1.3×). Conv\_0's transformation, while non-trivial, is compensable (removal only −1.09 F1). When Conv\_1 is removed, Self-Attention's attention patterns collapse onto wrong positions (JSD 8.2× vs Conv\_0 control, answer focus drops 19%) — this is the proximate mechanism of the performance breakdown.
 
 ### Chain of Evidence
 
 The three experiments build this answer incrementally:
 
-1. **The gap is real** (Experiment 1): Ablation and causal tracing independently confirm the importance ordering Conv\_1 > Attn > FFN > Conv\_0. The 30× gap cannot be explained by output magnitude alone (norm ordering is inversely correlated with ablation ordering among Conv\_0/FFN/Attn).
+1. **The gap is real** (Experiment 1): Two independent methods confirm Conv\_1's overwhelming dominance. Ablation ordering: Conv\_1 ≫ Attn > FFN > Conv\_0. Causal tracing ordering: Conv\_1 ≫ Conv\_0 > Attn > FFN. Key invariant: Conv\_1 far exceeds all other components in both methods, and Conv\_1 > Conv\_0 is consistent in direction. Conv\_0 rises to second in causal tracing yet ranks last in ablation — consistent with it contributing useful but compensable preprocessing. The 30× gap cannot be explained by output magnitude alone (norm ordering is inversely correlated with ablation ordering among Conv\_0/FFN/Attn).
 
-2. **The difference is in representational structure, not information content** (Experiment 2): Linear probes show all components encode answer-position information to a similar degree, ruling out information difference as the primary explanation. Discriminativity and spatial coherence analysis reveals that Conv\_1 actively reshapes representations (high discriminativity, high effective rank), while Conv\_0 operates as a near-identity transformation.
+2. **The difference is in specific dimensions of representational structure, not information content** (Experiment 2): Linear probes show all components encode answer-position information to a similar degree (AUC gap only 0.025), ruling out information difference as the primary explanation. Representational analysis reveals Conv\_1's output has significantly higher amplitude variation (Norm Variance 3.2×) and subspace dimensionality (Effective Rank 1.3×), with more spatially uniform structure (decay 0.058 vs 0.109). Conv\_0 actually scores slightly higher on directional distinctiveness yet is nearly dispensable, ruling out directional distinctiveness as a sufficient condition for the importance gap.
 
-3. **Removing Conv\_1 causes attention collapse** (Experiment 3): Attention distortion under Conv\_1 removal is 8.2× greater than under Conv\_0 removal; entropy decreases and answer focus drops 19%. Pipeline distance is a necessary but not sufficient condition for this asymmetry: Conv\_0, as Conv\_1's immediate upstream neighbor, causes minimal impact upon removal — proving that proximity alone does not determine impact.
+3. **Removing Conv\_1 causes attention collapse** (Experiment 3): Attention distortion under Conv\_1 removal is 8.2× greater than under Conv\_0 removal (per-sample mean ratio 8.84×, 95% CI: [8.54×, 9.15×]); entropy decreases by 0.259 and answer focus drops 19%. Pipeline distance is necessary but not sufficient for this asymmetry: Conv\_0, as Conv\_1's immediate upstream neighbor, causes minimal impact upon removal (−1.09 F1) — proving that proximity alone does not determine impact; what matters is irreplaceable functional dependence.
 
 ### Limitations
 

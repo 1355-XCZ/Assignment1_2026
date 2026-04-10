@@ -11,7 +11,7 @@ points so we can corrupt inputs and selectively restore sub-layer outputs.
 import torch
 import torch.nn.functional as F
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Literal
+from typing import Optional, Dict, List, Literal
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +181,7 @@ def qanet_forward(
     # Ablation
     skip_spec: Optional['SkipSpec'] = None,
     skip_cq_att: bool = False,
+    zero_cq_quadrants: Optional[List[int]] = None,
 ):
     """
     Run QANet with optional corruption and/or restoration.
@@ -269,6 +270,10 @@ def qanet_forward(
         acts["cq_att"] = X.detach().clone()
     if skip_cq_att:
         X = torch.zeros_like(X)
+    if zero_cq_quadrants:
+        d = X.size(1) // 4
+        for q in zero_cq_quadrants:
+            X[:, q * d:(q + 1) * d, :] = 0
     if (restore_spec and restore_spec.stage == "cq_att"
             and clean_acts and "cq_att" in clean_acts):
         X = clean_acts["cq_att"]
