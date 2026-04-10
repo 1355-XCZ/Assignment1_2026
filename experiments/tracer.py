@@ -172,6 +172,7 @@ def qanet_forward(
     corrupt_target: Optional[Literal["context", "question", "both"]] = None,
     noise_std_scale: float = 3.0,
     noise_seed: Optional[int] = None,
+    corrupt_mask_c: Optional[torch.Tensor] = None,
     # Collection
     collect: bool = False,
     # Restoration
@@ -179,6 +180,7 @@ def qanet_forward(
     restore_spec: Optional[RestoreSpec] = None,
     # Ablation
     skip_spec: Optional['SkipSpec'] = None,
+    skip_cq_att: bool = False,
 ):
     """
     Run QANet with optional corruption and/or restoration.
@@ -209,7 +211,11 @@ def qanet_forward(
             torch.manual_seed(noise_seed)
         if corrupt_target in ("context", "both"):
             noise_std = noise_std_scale * C.std().item()
-            C = C + torch.randn_like(C) * noise_std
+            noise = torch.randn_like(C) * noise_std
+            if corrupt_mask_c is not None:
+                mask = corrupt_mask_c.unsqueeze(1).float()
+                noise = noise * mask
+            C = C + noise
         if corrupt_target in ("question", "both"):
             noise_std = noise_std_scale * Q.std().item()
             Q = Q + torch.randn_like(Q) * noise_std
@@ -261,6 +267,8 @@ def qanet_forward(
 
     if collect:
         acts["cq_att"] = X.detach().clone()
+    if skip_cq_att:
+        X = torch.zeros_like(X)
     if (restore_spec and restore_spec.stage == "cq_att"
             and clean_acts and "cq_att" in clean_acts):
         X = clean_acts["cq_att"]
