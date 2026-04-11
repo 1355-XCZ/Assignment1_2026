@@ -117,8 +117,8 @@ Ablation measures **performance loss** from removing a component (output side); 
 
 Starting from the mathematical definitions, the two directions perform fundamentally different operations:
 
-- **C2Q (A = S1·Q)**: **Injects** Question embeddings into every Context position — introducing information that **did not previously exist** in Context.
-- **Q2C (C⊙B, where B = S1·S2ᵀ·C)**: **Redistributes** Context information among Context positions, mediated by Question — introduces no new information, only reorganizes existing information.
+- **C2Q (A = S1·Q)**: **Injects** Question embeddings into every Context position — introducing vector content that **did not previously exist** in Context.
+- **Q2C (C⊙B, where B = S1·S2ᵀ·C)**: **Redistributes** Context vectors among Context positions, mediated by Question — does not introduce Question's vector content, only reorganizes existing Context information using Question-guided attention patterns. (Q2C injects Question-guided **structure**, not Question **content**.)
 
 If answer-relevant information in Context is spatially concentrated (the answer span occupies only a small fraction of all tokens), then "redistributing existing Context information" has low value — useful information is already at the correct positions. Meanwhile, "injecting Question information" is irreplaceable — the Question signal has no other pathway into CQ Attention's output.
 
@@ -168,12 +168,12 @@ This finding validates the mechanism argument's premise:
 
 **Answer**: The directional asymmetry is not only cross-architecture robust, but **dramatically intensifies** in QANet — from BiDAF's 2.7× to **61.0×**.
 
-**Fact**: Under QANet's Conv+Attention architecture, the joint causal effect of C2Q sub-components (A, C⊙A) is 61.0 times that of Q2C (C⊙B). Removing C2Q drops F1 to 7.46 (approaching the 7.11 from full-layer removal); C2Q carries nearly all of CQ Attention's value. Q2C contributes only −1.03 F1, nearly redundant in QANet. Even under controlled single-component comparison (each zeroing 1/4 of dimensions), C⊙A vs C⊙B = 15.4×, A vs C⊙B = 3.9× — the asymmetry holds at every granularity. cq\_resizer weight norms independently validate C2Q dominance at the direction level.
+**Fact**: Under QANet's Conv+Attention architecture, the joint causal effect of C2Q sub-components (A, C⊙A) is 61.0 times that of Q2C (C⊙B) at direction level (unequal intervention scale: C2Q zeros 2/4 dimensions, Q2C zeros 1/4). Under controlled single-component comparison (each zeroing exactly 1/4 of dimensions), the asymmetry remains stark: **C⊙A vs C⊙B = 15.4×, A vs C⊙B = 3.9×**. The 15.4× is the core ratio under comparable intervention scale. Removing C2Q drops F1 to 7.46 (approaching the 7.11 from full-layer removal); C2Q carries nearly all of CQ Attention's value. Q2C contributes only −1.03 F1, nearly redundant in QANet. cq\_resizer weight norms validate C2Q dominance at the direction level.
 
 **Mechanism**: The asymmetry's root cause is that the two directions perform **fundamentally different operations**:
 
 - **C2Q (A = S1·Q)** injects Question embeddings into Context representations — the **sole source of new information**. Question signal has no other pathway into the Context representation stream after CQ Attention. No matter how powerful the downstream encoder, it cannot generate Question signal from nothing. C2Q is irreplaceable.
-- **Q2C (C⊙B, where B = S1·S2ᵀ·C)** redistributes Context information among Context positions, mediated by Question — no new information is introduced, only existing information is reorganized. This function highly overlaps with QANet's Model Encoder's 21 layers of Self-Attention. Q2C is replaceable.
+- **Q2C (C⊙B, where B = S1·S2ᵀ·C)** redistributes Context vectors among Context positions, mediated by Question — does not introduce Question's vector content, only reorganizes existing Context information using Question-guided attention patterns. This Context-internal redistribution function highly overlaps with QANet's Model Encoder's 21 layers of Self-Attention. Q2C is replaceable.
 
 Experiment 2 validates this mechanism's precondition: Context's causal information is highly concentrated at the answer span (density ratio 29.5×, with 3.1 answer tokens accounting for 47% of total effect). Information is already at the correct positions — redistributing it has almost no value, but injecting Question signal to "mark" these positions is indispensable.
 
@@ -182,7 +182,7 @@ Experiment 2 validates this mechanism's precondition: Context's causal informati
 ### Evidence Chain
 
 1. **Pre-validation**: CQ Attention full ablation causes F1 to drop **89.9%** (70.24 → 7.11), confirming its information bottleneck role; dissecting internal sub-components is well-motivated.
-2. **Core fact** (Experiment 1): Sub-component ablation establishes ranking C⊙A ≫ C > A ≫ C⊙B; direction-level aggregation establishes C2Q/Q2C = **61.0×** (BiDAF: 2.7×); single-component comparison with controlled intervention size still holds (C⊙A/C⊙B = 15.4×); cq\_resizer weight A-quadrant norm highest (18.44), independently validating from the parameter side.
+2. **Core fact** (Experiment 1): Sub-component ablation establishes ranking C⊙A ≫ C > A ≫ C⊙B; direction-level C2Q/Q2C = 61.0× (BiDAF: 2.7×), though C2Q zeros 2/4 dims vs Q2C 1/4 dim; **controlled single-component comparison** C⊙A/C⊙B = **15.4×**, A/C⊙B = 3.9× — asymmetry robust at every granularity. cq\_resizer weight A-quadrant norm highest (18.44), validating direction-level trend from the parameter side.
 3. **Mechanism explanation** (Experiment 2 + architecture analysis): Answer token information density **29.5×** → Context information highly concentrated → Q2C's redistribution function redundant (information already at correct positions, and subsumed by Model Encoder's 21 Self-Attention layers) → C2Q's injection function irreplaceable (sole source of Question signal) → asymmetry is an inherent property of CQ Attention's operational structure, cross-architecture robust. Amplification stems from QANet's stronger downstream encoder further compressing Q2C's residual value.
 
 ### Limitations
