@@ -234,7 +234,7 @@
 
 This report documents the repair of a QANet implementation and the empirical evidence that the repaired system now behaves like a trainable extractive question-answering model rather than a collection of disconnected code paths. The analysis is organized around two intertwined goals. First, the end-to-end pipeline must become executable and empirically meaningful: input processing, forward propagation, loss computation, optimisation, validation, and checkpoint reload must all operate coherently. Second, the learning mechanisms themselves must match their intended theoretical roles, so that later observations about optimisation, regularisation, convolution, attention, and decoding can be attributed to the model rather than to implementation artifacts.
 
-The later mechanism study is motivated by three hypotheses derived from the repaired architecture. They focus on how information is processed inside the model rather than on superficial hyperparameter comparison: why architecturally identical encoder convolutions (Conv\_0 and Conv\_1) diverge by 30$\times$ in causal importance, whether the directional asymmetry between C2Q and Q2C within CQ Attention persists and intensifies across the architecture change from BiDAF to QANet, and whether the Pointer layer's asymmetric wiring over repeated model-encoder passes reflects genuine functional specialisation or an untested inherited design. The debugging analysis below therefore serves two purposes at once: it explains what had to be repaired, and it establishes why later experiments can be interpreted as evidence about QANet itself.
+The later mechanism study is motivated by three hypotheses derived from the repaired architecture. They focus on how information is processed inside the model rather than on superficial hyperparameter comparison: why architecturally identical encoder convolutions (Conv\_0 and Conv\_1) diverge by an order of magnitude in causal importance ($\Delta$F1 ratio $\approx 30\times$) despite sharing the same architecture, whether the directional asymmetry between C2Q and Q2C within CQ Attention persists and intensifies across the architecture change from BiDAF to QANet, and whether the Pointer layer's asymmetric wiring over repeated model-encoder passes reflects genuine functional specialisation or an untested inherited design. The debugging analysis below therefore serves two purposes at once: it explains what had to be repaired, and it establishes why later experiments can be interpreted as evidence about QANet itself.
 
 \ReportSubsection{1.1 Debugging scope}
 
@@ -2528,7 +2528,7 @@ Three conclusions follow from this routine. First, the warmup phase is behaving 
 %%  SECTION 9 — H1
 %% ====================================================================
 
-\ReportSection{9 Hypothesis 1: Causal Importance of Convolution vs Self-Attention in QANet's Encoder}
+\ReportSection{9 Hypothesis 1: Mechanistic Divergence Between Architecturally Identical Convolution Layers in QANet's Encoder}
 
 \ReportSubsection{9.1 Motivation and research question}
 
@@ -2550,12 +2550,14 @@ By separating the two through eval-time ablation and causal tracing, both method
 \textbf{Conv\_1 $\gg$ Self-Attention $>$ FFN $>$ Conv\_0}
 \end{center}
 
-Conv\_1 is the \textbf{most important} of all four component types ($-32.54$~F1 upon removal), while Conv\_0 is the \textbf{least important} ($-1.09$~F1)---a 30$\times$ gap. Yet Conv\_0 and Conv\_1 are \textbf{architecturally identical}: both are depthwise separable convolutions with kernel size $k=5$ and the same hidden dimension, trained end-to-end under the same objective.
+Conv\_1 is the \textbf{most important} of all four component types ($-32.54$~F1 upon removal), while Conv\_0 is the \textbf{least important} ($-1.09$~F1)---a $\Delta$F1 ratio of $32.54 / 1.09 \approx 30\times$. Yet Conv\_0 and Conv\_1 are \textbf{architecturally identical}: both are depthwise separable convolutions with kernel size $k=5$ and the same hidden dimension, trained end-to-end under the same objective.
+
+\textbf{A note on the 30$\times$ ratio.} This is the ratio of eval-time ablation $\Delta$F1 values. The denominator ($-1.09$~F1) is small, so the precise multiplier is sensitive to measurement granularity---if Conv\_0's drop were 0.5~F1 instead, the ratio would be $\sim$65$\times$. Causal tracing gives a different ratio (AIE share: $71.3\% / 15.3\% \approx 4.7\times$), confirming that the precise multiplier is method-dependent. The \textbf{qualitative ordering} (Conv\_1 $\gg$ Conv\_0) is robust across both methods, but the ``30$\times$'' should be read as ``order-of-magnitude difference'' rather than a precise measurement. We retain it as a concise shorthand for the large, reproducible gap.
 
 The same architecture produces both the most important and the least important component. Architecture alone cannot explain this gap; the divergence must relate to their different positions in the pipeline and the different functions they consequently learn during training.
 
 \begin{tcolorbox}[enhanced,breakable,colback=white,colframe=BugBlueBorder,boxrule=0.5pt,arc=1.5mm,left=2.8mm,right=2.8mm,top=1.8mm,bottom=1.8mm]
-\textbf{H1 research question.} Conv\_0 and Conv\_1 share identical architecture yet differ 30$\times$ in importance. What mechanistic differences between them explain this gap?
+\textbf{H1 research question.} Conv\_0 and Conv\_1 share identical architecture yet exhibit an order-of-magnitude difference in importance ($\Delta$F1 ratio $\approx 30\times$). What mechanistic differences between them explain this gap?
 \end{tcolorbox}
 
 \ReportSubsection{9.2 Experimental design overview}
@@ -2564,7 +2566,7 @@ We address this question through three experiments, each building on the previou
 
 \textbf{Experiment~1 (Is the gap real?)} We quantify component importance using two independent methods---eval-time ablation and causal tracing---and check for output-magnitude confounds. The goal is to establish that the 30$\times$ gap is reproducible and not an artefact.
 
-\textbf{Experiment~2 (What is the functional difference?)} Experiment~1 confirms that Conv\_1 is 30$\times$ more important than Conv\_0. So how do their outputs differ functionally? We first test with linear probes and find that both encode nearly identical task-relevant information (AUC gap only 0.025)---information difference cannot explain a 30$\times$ importance gap. We therefore examine whether the two layers apply different transformations to their inputs (representational structure).
+\textbf{Experiment~2 (What is the functional difference?)} Experiment~1 confirms that Conv\_1 is far more important than Conv\_0 ($\Delta$F1 ratio $\approx 30\times$). So how do their outputs differ functionally? We first test with linear probes and find that both encode nearly identical task-relevant information (AUC gap only 0.025)---information difference cannot explain an order-of-magnitude importance gap. We therefore examine whether the two layers apply different transformations to their inputs (representational structure).
 
 \textbf{Experiment~3 (How does the model fail?)} Experiment~2 characterises the output differences. What happens inside the model when Conv\_1 is removed? Since Self-Attention is Conv\_1's direct downstream consumer, we capture attention weights and observe how attention patterns change under Conv\_1 removal.
 
@@ -2598,21 +2600,25 @@ $-$Conv (both) & 27.14 & $-43.11$ & 13.60\\
 \end{center}
 \normalsize
 
-\textbf{Finding~1}: Conv\_1 is the most important component; Conv\_0 is the least. The gap between architecturally identical layers is \textbf{30$\times$} ($32.54 / 1.09$).
+\textbf{Finding~1}: Conv\_1 is the most important component; Conv\_0 is the least. The $\Delta$F1 ratio between architecturally identical layers is $32.54 / 1.09 \approx$ \textbf{30$\times$} (see note on ratio sensitivity in Section~9.1).
 
 \textbf{Finding~2}: Joint removal ($-43.11$) exceeds the sum of individuals ($-33.63$) by 9.48~F1---a super-additive interaction. Conv\_0 contributes non-redundant preprocessing that only becomes critical when Conv\_1 is also absent.
 
 \FieldLabel{9.3.2 Per-block ablation}
 
-Remove conv (both) or self\_attn in one (pass, block). 42 configs, full dev set (10{,}465 samples).
+Remove conv (both) or self\_attn in one (pass, block) at a time: $3 \text{ passes} \times 7 \text{ blocks} \times 2 \text{ component types} = 42$ configs, full dev set (10{,}465 samples).
 
 \textbf{Finding~3}: Max single-block impact = $-1.23$~F1 (p0\_b0\_conv); collective removal = $-43.11$. A 35$\times$ gap reveals \textbf{distributed redundancy}: no single block is essential, but together they are indispensable.
 
-\textbf{Finding~4}: Early passes matter more: $M_1$ ($-0.16$ avg) $\gg$ $M_2$ ($-0.06$) $\gg$ $M_3$ ($+0.01$).
+\textbf{Finding~4}: Early passes matter more. Averaging per-block $\Delta$F1 across all component types within each pass: $M_1$ ($-0.16$ avg) $\gg$ $M_2$ ($-0.06$) $\gg$ $M_3$ ($+0.01$).
 
 \FieldLabel{9.3.3 Causal tracing (Meng et al., 2022)}
 
-Per sample: (1)~clean run $\to$ collect 84 sub-layer activations; (2)~corrupt context embeddings (Gaussian, $\sigma = 3 \times \text{std}$); (3)~restore ONE sub-layer's clean activation $\to$ measure recovery (AIE). 200 samples, 3 noise repeats.
+Per sample: (1)~clean run $\to$ collect all 84 sub-layer activations ($3 \text{ passes} \times 7 \text{ blocks} \times 4 \text{ components}$); (2)~corrupt context embeddings (Gaussian, $\sigma = 3 \times \text{std}$); (3)~restore ONE sub-layer's clean activation into the corrupted run $\to$ measure recovery. The Average Indirect Effect (AIE) for each sub-layer $i$ is:
+\[
+\text{AIE}_i = P(\text{answer} \mid \text{corrupted} + \text{restore}_i) - P(\text{answer} \mid \text{corrupted})
+\]
+A higher AIE means that sub-layer $i$ carries more of the causal information needed for the correct answer. 200 samples, 3 noise repeats.
 
 \small
 \begin{center}
@@ -2641,11 +2647,11 @@ FFN & 0.0012 & 0.0246 & 5.7\%\\
 
 Sub-layer L2 norms: Conv\_1 (250) $>$ Conv\_0 (113) $>$ FFN (104) $>$ Attn (82). Pearson $r(\text{norm}, \text{AIE}) = 0.893$.
 
-Could the gap simply reflect Conv\_1 having larger outputs? For Conv\_0/FFN/Attn, norm ordering (Conv\_0 $>$ FFN $>$ Attn) is \textbf{inversely} correlated with ablation ordering (Attn $>$ FFN $>$ Conv\_0)---ruling out magnitude as the driver for these three. Conv\_1's dominance direction is robust; the precise ratio over Attn (2--7$\times$) carries uncertainty from norm co-correlation.
+Could the gap simply reflect Conv\_1 having larger outputs? If magnitude were the driver, the norm ordering Conv\_0 (113) $>$ FFN (104) $>$ Attn (82) should predict ablation ordering Conv\_0 $>$ FFN $>$ Attn. The actual ablation ordering is exactly reversed: Attn ($-4.81$) $>$ FFN ($-3.32$) $>$ Conv\_0 ($-1.09$)---\textbf{inversely} correlated. This rules out output magnitude as the driver for these three components. Conv\_1's dominance direction is robust regardless of magnitude; the precise ratio over Attn (2--7$\times$) carries uncertainty from norm co-correlation.
 
 \FieldLabel{9.3.5 Experiment 1 summary}
 
-The 30$\times$ importance gap between identical architectures is real and reproducible across two independent methods. It cannot be explained by output magnitude alone. Something about what Conv\_1 \emph{learns to do} is fundamentally different from Conv\_0.
+The order-of-magnitude importance gap between identical architectures is real and reproducible across two independent methods. It cannot be explained by output magnitude alone. Something about what Conv\_1 \emph{learns to do} is fundamentally different from Conv\_0.
 
 \begin{center}
 \SafeIncludeGraphics[width=0.72\linewidth]{prism-uploads/h1_fig2_dual_method.png}\\[0.3em]
@@ -2654,11 +2660,11 @@ The 30$\times$ importance gap between identical architectures is real and reprod
 
 \ReportSubsection{9.4 Experiment 2: Functional differences between Conv\_1 and Conv\_0}
 
-\textbf{Question}: Conv\_1 is 30$\times$ more important than Conv\_0. How do their outputs differ functionally?
+\textbf{Question}: Conv\_1 is far more important than Conv\_0 ($\Delta$F1 ratio $\approx 30\times$). How do their outputs differ functionally?
 
 \FieldLabel{9.4.1 Information content (linear probe)}
 
-Linear probing is a standard technique in representation analysis (Alain \& Bengio, 2017; Belinkov et al., 2017). We train logistic regression on per-token sub-layer outputs (before residual addition), label: inside answer span. 500 samples, 80/20 split, 5 (pass, block) positions.
+Linear probing is a standard technique in representation analysis (Alain \& Bengio, 2017; Belinkov et al., 2017). We train logistic regression on per-token sub-layer outputs \textbf{before residual addition}---i.e., the sub-layer's own transformation, isolated from the skip-connection input. This is a deliberate choice: probing the post-residual stream would mix the sub-layer's contribution with accumulated upstream information, making all components appear similar regardless of their actual transformation. Label: inside answer span. 500 samples, 80/20 split, 5 (pass, block) positions.
 
 \small
 \begin{center}
@@ -2676,7 +2682,7 @@ Conv\_0 & 0.876\\
 \end{center}
 \normalsize
 
-\textbf{Finding~6}: On the answer-position property we tested, all components encode similar information. The Conv\_1 vs Conv\_0 gap is only 0.025~AUC, negligible compared to their 30$\times$ ablation gap. This is consistent with residual architecture: each layer's output = sub-layer transformation + skip-connection input, so all outputs contain the accumulated information in the residual stream.
+\textbf{Finding~6}: On the answer-position property we tested, all components encode similar information \emph{even in their isolated transformations} (before residual addition). The Conv\_1 vs Conv\_0 gap is only 0.025~AUC, negligible compared to their order-of-magnitude ablation gap. Since we probed pre-residual outputs, this similarity cannot be attributed to the skip-connection carrying accumulated information---it reflects the sub-layers' own transformations encoding comparable answer-position signal.
 
 \textbf{Limitation}: We only probed one property (answer position). Conv\_1 may encode critical information that Conv\_0 does not on other task-relevant properties (e.g., syntactic boundaries, entity types)---these remain untested. The ``similar information content'' conclusion is strictly limited to the tested property---\textbf{the gap's root cause may partly lie in untested information differences, partly in representational structure}. Additionally, linear probes can only capture linearly separable features; non-linearly encoded differences may be missed.
 
@@ -2728,13 +2734,13 @@ FFN & 0.595 & 0.564 & 0.562 & 0.556 & 0.039\\
 
 The functional difference between Conv\_1 and Conv\_0---at least on the answer-position property---is not in information content (AUC gap only 0.025) but in \textbf{specific dimensions of representational structure}. Conv\_1's output has significantly higher token-level amplitude variation (Norm Variance 3.2$\times$) and subspace dimensionality (Effective Rank 1.3$\times$), with more spatially uniform structure (decay 0.058 vs 0.109).
 
-The divergence across metrics has diagnostic value. Conv\_0 scores slightly higher on directional distinctiveness yet is nearly dispensable ($-1.09$~F1)---ruling out directional distinctiveness as a sufficient condition. The two dimensions where Conv\_1 holds a clear advantage---amplitude modulation and subspace dimensionality---are candidate mechanisms. This is consistent with dot-product attention mechanics: $QK^{\!\top}$ scores are sensitive to input magnitude differences, and higher-dimensional inputs allow $Q$, $K$ projections to carry richer discriminative signals. Notably, FFN has nearly identical Norm Variance (14.79) to Conv\_1 but is far less important ($-3.32$ vs $-32.54$~F1)---FFN sits downstream of Self-Attention, so its output properties do not directly influence attention computation. This further indicates that amplitude modulation's impact depends on pipeline position.
+The divergence across metrics has diagnostic value. Conv\_0 scores slightly higher on directional distinctiveness yet is nearly dispensable ($-1.09$~F1)---ruling out directional distinctiveness as a sufficient condition. The two dimensions where Conv\_1 holds a clear advantage---amplitude modulation and subspace dimensionality---are candidate mechanisms. This is consistent with dot-product attention mechanics: $QK^{\!\top}$ scores are sensitive to input magnitude differences, and higher-dimensional inputs allow $Q$, $K$ projections to carry richer discriminative signals. Notably, FFN provides a natural control: its Norm Variance (14.79) is nearly identical to Conv\_1's (14.48), so if Norm Variance alone were sufficient for importance, FFN should match Conv\_1 in ablation impact. It does not ($-3.32$ vs $-32.54$~F1), precisely because FFN sits \emph{downstream} of Self-Attention---its output properties cannot shape $QK^{\!\top}$ scores. This confirms that amplitude modulation's causal impact depends critically on pipeline position: the same output property matters when it feeds into attention, and is irrelevant when it does not.
 
 \ReportSubsection{9.5 Experiment 3: How does the model fail without Conv\_1?}
 
 \textbf{Question}: Removing Conv\_1 causes a $-32.54$~F1 collapse. What happens inside the model?
 
-Self-Attention is Conv\_1's direct downstream consumer. We use forward hooks to capture attention weights under three conditions (50 samples): clean, $-$Conv\_1, $-$Conv\_0 (control).
+Self-Attention is Conv\_1's direct downstream consumer. We use forward hooks to capture attention weights under three conditions (50 samples; sufficient because the per-block JSD ratio is tightly concentrated at 6.9--10.4$\times$ across all 7 blocks, indicating low variance): clean, $-$Conv\_1, $-$Conv\_0 (control).
 
 \FieldLabel{9.5.1 JS divergence (clean vs ablated)}
 
@@ -2888,7 +2894,7 @@ CQ output zeroed & 7.11 & --- & $-63.13$ ($-89.9\%$)\\
 \end{center}
 \normalsize
 
-F1 drops by 89.9\%, far exceeding the 50\% threshold. CQ Attention carries nearly all information the model's performance depends on. Dissecting its internal sub-components is well-motivated.
+F1 drops by 89.9\%. CQ Attention carries nearly all information the model's performance depends on. Dissecting its internal sub-components is well-motivated.
 
 \ReportSubsection{10.4 Experiment 1: Does directional asymmetry hold?}
 
@@ -2944,7 +2950,7 @@ C2Q / Q2C ratio & 2.7$\times$ & \textbf{61.0$\times$}\\
 {\bfseries Table 10.5. cq\_resizer weight quadrant Frobenius norms}\\[0.25em]
 \begin{tabularx}{0.82\linewidth}{>{\raggedright\arraybackslash}p{0.18\linewidth}>{\raggedright\arraybackslash}p{0.22\linewidth}>{\centering\arraybackslash}p{0.20\linewidth}>{\centering\arraybackslash}X}
 \toprule
-\textbf{Quadrant} & \textbf{Sub-component} & \textbf{Frobenius norm} & \textbf{\% of total}\\
+\textbf{Quadrant} & \textbf{Sub-component} & \textbf{Frobenius norm} & \textbf{norm\,/\,$\|W\|_F$}\\
 \midrule
 $W_{[:,:d]}$ & $C$ (raw) & 12.42 & 44.6\%\\
 $W_{[:,d:2d]}$ & $A$ (C$\to$Q) & \textbf{18.44} & \textbf{66.2\%}\\
@@ -2959,7 +2965,7 @@ $W_{[:,3d:4d]}$ & $C \odot B$ (Q$\to$C) & 11.78 & 42.3\%\\
 
 \textbf{Finding 1 (Sub-component ranking).} The causal importance ranking is $C \odot A$ ($-15.83$) $\gg$ $C$ ($-8.51$) $>$ $A$ ($-4.04$) $\gg$ $C \odot B$ ($-1.03$). The gated term $C \odot A$ is the single most important sub-component; the Q2C direction ($C \odot B$) is nearly negligible.
 
-\textbf{Finding 2 (Cross-architecture comparison).} QANet's C2Q/Q2C ratio is \textbf{61.0$\times$} (BiDAF: 2.7$\times$). The directional asymmetry not only \emph{persists} after the architecture change but \emph{dramatically intensifies}---from 2.7$\times$ to 61$\times$. Removing C2Q drops F1 to 7.46 (approaching 7.11 from full-layer removal), meaning C2Q carries nearly all of CQ Attention's value. Q2C ($C \odot B$) contributes only $-1.03$ F1, nearly redundant in QANet.
+\textbf{Finding 2 (Cross-architecture comparison).} QANet's direction-level C2Q/Q2C ratio is \textbf{61.0$\times$} (BiDAF: 2.7$\times$). This headline ratio involves unequal intervention scales (C2Q zeros 2/4 dimensions, Q2C zeros 1/4); the controlled single-component ratio is 15.4$\times$ (see Intervention size control below). Both ratios confirm that the asymmetry not only \emph{persists} after the architecture change but \emph{dramatically intensifies}. Removing C2Q drops F1 to 7.46 (approaching 7.11 from full-layer removal); Q2C ($C \odot B$) contributes only $-1.03$ F1, nearly redundant in QANet.
 
 \begin{center}
 \SafeIncludeGraphics[width=0.88\linewidth]{prism-uploads/h2_fig1_cross_arch.png}\\[0.3em]
@@ -3019,7 +3025,7 @@ Supplementary observation: $\text{TE(ans)} + \text{TE(non)} = 0.436 > \text{TE(f
 
 \FieldLabel{10.5.2 Reasoning}
 
-Density ratio = 29.5$\times$, far exceeding the $5\times$ threshold. Context's causal information is \textbf{highly concentrated} in the answer span (on average, 3.1 tokens account for 47\% of total effect). This validates the mechanism argument's premise:
+Density ratio = 29.5$\times$. Context's causal information is \textbf{highly concentrated} in the answer span (on average, 3.1 tokens account for 47\% of total effect). This validates the mechanism argument's premise:
 
 \begin{enumerate}
 \item \textbf{Q2C's redistribution function is nearly redundant}: Useful Context information is already concentrated at the correct positions; redistributing via Question mediation adds almost no new value. Furthermore, QANet's Model Encoder contains 21 layers of Self-Attention whose function is precisely to redistribute information among Context positions---highly overlapping with Q2C. Q2C's function is structurally subsumed by downstream processing.
@@ -3046,7 +3052,7 @@ Under QANet's Conv+Attention architecture, the joint causal effect of C2Q sub-co
 
 Experiment~2 validates this mechanism's precondition: Context's causal information is highly concentrated at the answer span (density ratio 29.5$\times$, with 3.1 answer tokens accounting for 47\% of total effect). Information is already at the correct positions---redistributing it has almost no value, but injecting Question signal to ``mark'' these positions is indispensable.
 
-\textbf{Amplification effect} (2.7$\times$ $\to$ 61$\times$): BiDAF's post-fusion processing consists of only 2 LSTM layers, insufficient to fully substitute Q2C's Context redistribution function, so Q2C retains $-3.6$ F1 of residual value. QANet has 21 layers including Self-Attention, whose Context redistribution capacity far exceeds Q2C's, compressing Q2C's residual value to $-1.03$ F1 (near zero). C2Q's irreplaceability is unchanged across architectures; Q2C's redundancy increases with encoder strength---hence the ratio amplifies from 2.7$\times$ to 61$\times$.
+\textbf{Amplification effect} (2.7$\times$ $\to$ 61$\times$): BiDAF's post-fusion processing consists of only 2 LSTM layers, insufficient to fully substitute Q2C's Context redistribution function, so Q2C retains $-3.6$ F1 of residual value. QANet has 21 layers including Self-Attention, whose Context redistribution capacity far exceeds Q2C's, compressing Q2C's residual value to $-1.03$ F1 (near zero). C2Q's irreplaceability is unchanged across architectures; Q2C's redundancy increases with encoder strength---hence the ratio amplifies from 2.7$\times$ to 61$\times$. This explanation is consistent with the data but has not been independently tested (e.g., by varying the number of Model Encoder layers).
 
 \small
 \begin{center}
@@ -3114,7 +3120,7 @@ Wiring replacement is a form of eval-time intervention: the encoder is unchanged
 
 \ReportSubsection{11.3 Pre-validation: how large is the asymmetric design's advantage?}
 
-We directly test the necessity of the asymmetric design through wiring replacement. At eval time, we change the Pointer's input combinations (encoder unchanged), evaluating on the full dev set of 10{,}465 samples.
+We directly test the necessity of the asymmetric design through wiring replacement. At eval time, we change the Pointer's input combinations (encoder unchanged), evaluating on the full dev set of 10{,}465 samples. The large sample size ensures that even small F1 differences (e.g., 0.23) are measured with high precision.
 
 \small
 \begin{center}
@@ -3138,7 +3144,7 @@ Test results for the three design assumptions:
 
 \textbf{Assumption~1 (Depth specialisation)---barely holds}: The asymmetric design (original) outperforms the symmetric design (sym\_M2) by only \textbf{0.23~F1}. The supposed ``specialisation'' from assigning $M_3$ to end prediction provides near-negligible marginal benefit. More notably, $M_2$ doing both tasks (sym\_M2: $-0.23$) \emph{outperforms} $M_3$ doing both tasks (sym\_M3: $-0.54$)---the more processed product is actually worse.
 
-\textbf{Assumption~2 (Shared anchor)---does not hold}: Removing $M_1$ (no\_M1: $-0.58$) barely affects performance, but $M_1$ alone (only\_M1: $-6.28$) is catastrophic. $M_1$ participates in both predictions yet is the least important---the shared anchor is a redundant design.
+\textbf{Assumption~2 (Shared anchor)---near-redundant}: Removing $M_1$ (no\_M1: $-0.58$) barely affects performance, but $M_1$ alone (only\_M1: $-6.28$) is catastrophic. $M_1$ participates in both predictions yet contributes the least---the shared anchor provides negligible incremental value.
 
 \textbf{Assumption~3 (Iterative gain)---partially holds with diminishing returns}: $M_2$/$M_3$ are essential (only\_M1: $-6.28$), but $M_2$ already captures the vast majority of incremental value. The second iteration's increment (only\_M1 vs sym\_M2: 6.05~F1) far exceeds the third iteration's marginal contribution (near zero or negative).
 
@@ -3320,9 +3326,9 @@ Representation structure analysis is descriptive (correlational), not causal. ``
 
 \textbf{Direct answer to H3.} The functional specialisation hypothesis implied by the Pointer's asymmetric wiring \textbf{is not supported in the trained model}. All three assumptions of the asymmetric design fail to find support in our experiments:
 
-\textbf{1.\ Shared anchor---near-redundant.} Replacing $M_1$ causes only $-0.58$~F1 (behavioural). Pointer weights' $M_2$/$M_3$ quadrant norms are 1.7--2.0$\times$ $M_1$ quadrants (parameter level; $w_1$: 1.97$\times$, $w_2$: 1.69$\times$). CKA($M_1$, $M_2$) = 0.871 shows $M_2$ and $M_1$ share substantial linear structure (information level). All three angles point in the same direction: \textbf{$M_1$ provides negligible incremental value in the $[M_1;\, M_2]$ concatenation}. Note that no\_M1 substitutes $M_2$/$M_3$ into $M_1$'s position (not pure zeroing); the $-0.58$ loss partly reflects representational similarity.
+\textbf{1.\ Depth specialisation---not detected.} Pre-validation observes a behavioural advantage of only 0.23~F1 for the asymmetric design; the following information-level analysis explains why. Linear probes show $M_2$ achieves the highest AUC for both start (0.979) and end (0.981), with $M_3$ slightly lower for both (start = 0.978, end = 0.980). The expected ``$M_2 \to$ start, $M_3 \to$ end'' specialisation pattern \textbf{does not appear}---all differences are within $\Delta$AUC = 0.001, well below the estimated standard error ($\sim$0.005--0.01), in the range of statistical noise. Wiring replacement (behavioural) and probes (informational) consistently point to $M_2 \geq M_3$.
 
-\textbf{2.\ Depth specialisation---not detected.} Linear probes show $M_2$ achieves the highest AUC for both start (0.979) and end (0.981), with $M_3$ slightly lower for both (start = 0.978, end = 0.980). The expected ``$M_2 \to$ start, $M_3 \to$ end'' specialisation pattern \textbf{does not appear}---all differences are within $\Delta$AUC = 0.001, well below the estimated standard error ($\sim$0.005--0.01), in the range of statistical noise. Wiring replacement (behavioural) and probes (informational) consistently point to $M_2 \geq M_3$.
+\textbf{2.\ Shared anchor---near-redundant.} Replacing $M_1$ causes only $-0.58$~F1 (behavioural). Pointer weights' $M_2$/$M_3$ quadrant norms are 1.7--2.0$\times$ $M_1$ quadrants (parameter level; $w_1$: 1.97$\times$, $w_2$: 1.69$\times$). CKA($M_1$, $M_2$) = 0.871 shows $M_2$ and $M_1$ share substantial linear structure (information level). All three angles point in the same direction: \textbf{$M_1$ provides negligible incremental value in the $[M_1;\, M_2]$ concatenation}. Note that no\_M1 substitutes $M_2$/$M_3$ into $M_1$'s position (not pure zeroing); the $-0.58$ loss partly reflects representational similarity.
 
 \textbf{3.\ Iterative gain---second iteration captures the vast majority of value; third iteration's marginal contribution is near zero.} The only\_M1 vs sym\_M2 gap of 6.05~F1 shows the second iteration is essential; but the third iteration's marginal F1 contribution is negligible. Experiment~3 observes a noteworthy phenomenon: the third iteration further smooths representation structure (local contrast $-28\%$, boundary sharpness $-25\%$), yet linearly readable boundary information barely changes ($\Delta$AUC = 0.001). Information persists in a more distributed encoding---\textbf{structural change does not equal information loss}. However, $M_3$'s structural changes may partly stem from stochastic depth causing insufficient training (see Experiment~3 limitations), not solely from inherent effects of iteration.
 
@@ -3346,7 +3352,7 @@ Mechanism (Exp~3) & Third iteration smooths structure (20--28\%) without destroy
 
 \FieldLabel{11.8.1 Connection to other hypotheses}
 
-H1 demonstrated that Conv\_1 is an indispensable component in the Model Encoder (removal causes $-32.54$~F1); H3 demonstrates that $M_1$ is redundant in the Pointer (removal causes only $-0.58$~F1). Together they show that QANet's design contains \textbf{coexisting critical bottlenecks and redundancies}. H2 demonstrated that C2Q is irreplaceable while Q2C is redundant in CQ Attention---the same theme of ``irreplaceability vs redundancy.'' All three hypotheses reveal the uneven distribution of functional importance within QANet from different levels.
+H1 demonstrated that Conv\_1 is an indispensable component in the Model Encoder (removal causes $-32.54$~F1); H3 demonstrates that $M_1$ is redundant in the Pointer (removal causes only $-0.58$~F1). Together they show that, in the trained model, QANet's architecture contains \textbf{coexisting critical bottlenecks and redundancies}. H2 demonstrated that C2Q is irreplaceable while Q2C is redundant in CQ Attention---the same theme of ``irreplaceability vs redundancy.'' All three hypotheses reveal the uneven distribution of functional importance within QANet from different levels, as observed through eval-time mechanistic analysis.
 
 The direct echo between Experiment~3 and H1 is particularly notable: H1 found that Conv\_1 building local features is the core function of the Model Encoder; H3 found that iteratively applied Self-Attention progressively consumes these local features ($M_1 \to M_2 \to M_3$ local contrast drops from 0.116 to 0.048). This forms a complete picture: Conv\_1 produces, Self-Attention consumes, and too many iterations lead to over-consumption.
 
