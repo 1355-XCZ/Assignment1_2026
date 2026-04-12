@@ -22,7 +22,9 @@
 \usepackage{titlesec}
 \usepackage{needspace}
 \usepackage{xcolor}
+\usepackage{tocloft}
 \usepackage{hyperref}
+\usepackage{bookmark}
 \usepackage{fvextra}
 \usepackage{fancyhdr}
 \usepackage[most]{tcolorbox}
@@ -30,6 +32,9 @@
 \usepackage{listings}
 \usepackage{float}
 \usepackage{microtype}
+\usepackage[backend=biber,style=numeric,sorting=nyt,maxbibnames=99]{biblatex}
+\addbibresource{references.bib}
+\setcounter{tocdepth}{2}
 \IfFileExists{xurl.sty}{\usepackage{xurl}}{}
 \urlstyle{same}
 \DeclareUnicodeCharacter{00D7}{$\times$}
@@ -38,7 +43,30 @@
 \DeclareUnicodeCharacter{03C3}{$\sigma$}
 \DeclareUnicodeCharacter{221A}{$\sqrt{}$}
 
-\hypersetup{hidelinks}
+\hypersetup{
+  hidelinks,
+  bookmarksnumbered=false,
+  bookmarksopen=true,
+  bookmarksopenlevel=1,
+  pdftitle={QANet Bug Repair and Mechanistic Analysis},
+  pdfauthor={COMP4329 Group},
+}
+% ── Footnote: remove the default separator bar ──
+\renewcommand{\footnoterule}{\vspace{0.4em}}
+
+% ── TOC formatting ──
+\renewcommand{\cfttoctitlefont}{\hfill\bfseries\fontsize{18}{22}\selectfont}
+\renewcommand{\cftaftertoctitleskip}{0.5em}
+\renewcommand{\cftaftertoctitle}{\hfill\null\par\vspace{0.5em}\begin{center}{\color{SectionRule}\rule{0.5\linewidth}{0.6pt}}\end{center}\vspace{0.6em}}
+\renewcommand{\cftsecfont}{\bfseries}
+\renewcommand{\cftsecpagefont}{\bfseries}
+\renewcommand{\cftsecleader}{\cftdotfill{\cftsecdotsep}}
+\renewcommand{\cftsecdotsep}{\cftdotsep}
+\setlength{\cftsecindent}{0em}
+\setlength{\cftsubsecindent}{1.8em}
+\setlength{\cftbeforesecskip}{0.45em}
+\setlength{\cftbeforesubsecskip}{0.1em}
+
 \renewcommand{\theHfigure}{\arabic{figure}.\arabic{page}}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0.25em}
@@ -105,7 +133,9 @@
 
 \newcommand{\ReportSection}[1]{%
  \Needspace{24\baselineskip}%
+ \phantomsection
  \section*{#1}%
+ \addcontentsline{toc}{section}{#1}%
  \vspace{-0.35em}%
  {\color{SectionRule}\rule{\linewidth}{0.6pt}\par}%
  \vspace{0.35em}%
@@ -113,12 +143,15 @@
 
 \newcommand{\ReportSubsection}[1]{%
  \Needspace{24\baselineskip}%
+ \phantomsection
  \subsection*{#1}%
+ \addcontentsline{toc}{subsection}{#1}%
  \vspace{-0.12em}%
 }
 
 \newcommand{\FieldLabel}[1]{%
- {\bfseries #1:}\par
+ \needspace{4\baselineskip}%
+ {\bfseries #1:}\par\nopagebreak
 }
 
 \newcommand{\SafeIncludeGraphics}[2][]{%
@@ -228,15 +261,248 @@
 }
 
 \begin{document}
-\ReportTitle{QANet Bug Analysis Report}{Comprehensive debugging analysis of the repaired QANet implementation}{Structured form version with full code diffs}
+
+% ══════════════════════════════════════════════════════════════════
+% COVER PAGE
+% ══════════════════════════════════════════════════════════════════
+\begin{titlepage}
+\thispagestyle{empty}
+\begin{center}
+
+\vspace*{2cm}
+
+{\fontsize{11}{14}\selectfont\color{MetaGray}
+The University of Sydney\\
+School of Computer Science\\[0.8em]
+COMP4329 Deep Learning --- 2026 Semester 1}
+
+\vspace{2.5cm}
+
+{\bfseries\fontsize{26}{32}\selectfont QANet Bug Analysis Report\par}
+
+\vspace{0.8cm}
+
+{\fontsize{14}{18}\selectfont
+Comprehensive Debugging Analysis and\\
+Mechanistic Investigation of a Repaired QANet Implementation\par}
+
+\vspace{1.2cm}
+
+{\color{SectionRule}\rule{0.6\linewidth}{0.8pt}\par}
+
+\vspace{1.5cm}
+
+{\fontsize{12}{16}\selectfont
+Assignment 1 --- Group Report\par}
+
+\vspace{1.5cm}
+
+{\fontsize{11}{14}\selectfont
+Haoguang Zhou \quad\textbullet\quad Charles Wang \quad\textbullet\quad Peiyao Shou\par}
+
+\vspace{2cm}
+
+{\small
+\begin{tabular}{@{}rl@{}}
+\textbf{GitHub} & \url{https://github.com/PLACEHOLDER} \\[0.25em]
+\textbf{Google Drive} & \url{https://drive.PLACEHOLDER} \\
+\end{tabular}
+\par}
+
+\vspace{\fill}
+
+{\color{MetaGray}\fontsize{11}{14}\selectfont
+\today\par}
+
+\end{center}
+\end{titlepage}
+
+% ══════════════════════════════════════════════════════════════════
+% FRONT MATTER — roman page numbers
+% ══════════════════════════════════════════════════════════════════
+\pagenumbering{roman}
+\setcounter{page}{2}
+
+% ──────────────────────────────────────────────────────────────────
+% AUTHOR PAGE
+% ──────────────────────────────────────────────────────────────────
+\thispagestyle{fancy}
+\vspace*{1.5cm}
+\begin{center}
+{\bfseries\fontsize{18}{22}\selectfont Declaration of Authorship\par}
+\vspace{0.5em}
+{\color{SectionRule}\rule{0.5\linewidth}{0.6pt}\par}
+\end{center}
+
+\vspace{1.5cm}
+
+\begin{center}
+{\large\bfseries Haoguang Zhou}\par\smallskip
+{\small SID 530029731 \quad\textbar\quad \href{mailto:hzho0918@uni.sydney.edu.au}{hzho0918@uni.sydney.edu.au}}
+
+\vspace{0.8em}
+
+{\large\bfseries Charles Wang}\par\smallskip
+{\small SID 530096571 \quad\textbar\quad \href{mailto:ywan9676@uni.sydney.edu.au}{ywan9676@uni.sydney.edu.au}}
+
+\vspace{0.8em}
+
+{\large\bfseries Peiyao Shou}\par\smallskip
+{\small SID 560243660 \quad\textbar\quad \href{mailto:psho0719@uni.sydney.edu.au}{psho0719@uni.sydney.edu.au}}
+\end{center}
+
+\vspace{1.0cm}
+
+\begin{center}
+{\small COMP4329 Deep Learning \quad\textbar\quad 2026 Semester 1\par
+The University of Sydney}
+\end{center}
+
+\vspace{2.0cm}
+
+\noindent We declare that this assignment is our own work. We have read and understood the University's policy on academic integrity and plagiarism. Where we have used external sources, they are properly cited. All experimental results reported in this document were produced by running the code ourselves.
+
+\newpage
+
+% ──────────────────────────────────────────────────────────────────
+% TRUSTWORTHY AI USAGE
+% ──────────────────────────────────────────────────────────────────
+\thispagestyle{fancy}
+\vspace*{0.5cm}
+\begin{center}
+{\bfseries\fontsize{18}{22}\selectfont Trustworthy AI Usage\par}
+\vspace{0.5em}
+{\color{SectionRule}\rule{0.5\linewidth}{0.6pt}\par}
+\end{center}
+
+\vspace{1em}
+
+\textbf{1.\quad Version control and traceability.}
+
+\vspace{0.4em}
+
+To ensure that the AI-assisted development process remains auditable and reproducible, every bug fix documented in this report was committed to the project's Git repository as one or more self-contained commits. Each commit is tagged with a repository-level identifier (e.g.\ \texttt{BUG-021}; closely related commits share a compound tag such as \texttt{BUG-012/013}), enabling reviewers to inspect, revert, or verify any individual fix in isolation. The complete commit history is publicly available on the \texttt{Fix-Stage-1} branch of the GitHub repository, providing an objective record of the incremental repair process and the human review that accompanied each change.
+
+In the main text, bugs are referenced by a sequential reading number (BUG No.\,1, No.\,2, \ldots) for clarity. The underlying repository tags are non-sequential---reflecting merges, splits, and reorganisation during development---and are preserved in Appendix~B, which maps each sequential number to its original Git identifier.
+
+\vspace{0.8em}
+
+\textbf{2.\quad Methodological verification.}
+
+\vspace{0.4em}
+
+AI assistants can produce plausible-sounding but non-existent analytical techniques. To guard against such hallucinated methodology, every analysis method adopted in this report was traced back to its original publication and verified for suitability before use. All analytical methods cited in Sections~9--11 (e.g.\ causal tracing, linear probing, CKA, effective rank, selective corruption) correspond to peer-reviewed works listed in the bibliography. The AI was used to suggest candidate approaches and provide initial inspiration; the authors then independently located the source papers, confirmed that the method's assumptions and scope matched the experimental setting, and only then proceeded with implementation.
+
+\vspace{0.8em}
+
+\textbf{3.\quad Data integrity and analytical independence.}
+
+\vspace{0.4em}
+
+\begin{itemize}[leftmargin=1.6em]
+\item \textbf{Cross-version reproducibility.}\quad Experimental code was developed iteratively with AI assistance. A numerical result was accepted only when independently generated code---produced by different AI agent sessions or manually revised versions---converged on the same values, and the underlying code passed manual inspection. Data that could not be reproduced under these conditions was discarded.
+\item \textbf{Conservative interpretation.}\quad AI systems may amplify or exaggerate experimental findings to maintain narrative coherence. To mitigate this, all storylines, research questions, and experiment designs originated from the human authors. The AI served as an executor of implementation tasks, not as a source of scientific claims. For data interpretation, the authors first formulated conclusions independently; the AI was then prompted to \emph{challenge} those conclusions, and the analysis was iteratively refined through this adversarial process rather than by accepting AI-generated narratives at face value.
+\item \textbf{Scope of AI contribution.}\quad The AI's roles were limited to: (i)~suggesting candidate bug fixes during debugging, (ii)~scaffolding experiment code (e.g.\ forward hooks, metric computation), and (iii)~polishing draft text. All polished text was reviewed and revised by the authors to ensure accuracy and to remove unsubstantiated claims.
+\end{itemize}
+
+\vspace{0.8em}
+
+\textbf{4.\quad AI tool usage.}
+
+\vspace{0.4em}
+
+\textbf{Cursor IDE with Claude} was employed as the primary coding assistant. The following safeguards were maintained throughout:
+
+\begin{itemize}[leftmargin=1.6em]
+\item All code was \textbf{reviewed and validated by the author} before adoption. AI-generated suggestions were treated as proposals subject to human judgement, not as authoritative solutions.
+\item All experimental results (F1/EM scores, AIE values, TE measurements, representation metrics) were produced by \textbf{executing code on Google Colab}. No numerical results were taken from AI output.
+\item All analytical conclusions and scientific interpretations are the \textbf{author's own}.
+\end{itemize}
+
+\newpage
+
+% ──────────────────────────────────────────────────────────────────
+% TABLE OF CONTENTS
+% ──────────────────────────────────────────────────────────────────
+\thispagestyle{fancy}
+\vspace*{0.5cm}
+\tableofcontents
+\newpage
+
+% ──────────────────────────────────────────────────────────────────
+% PREFACE / REPORT GUIDE
+% ──────────────────────────────────────────────────────────────────
+\thispagestyle{fancy}
+\vspace*{0.5cm}
+\begin{center}
+{\bfseries\fontsize{18}{22}\selectfont Report Guide\par}
+\vspace{0.5em}
+{\color{SectionRule}\rule{0.5\linewidth}{0.6pt}\par}
+\end{center}
+
+\vspace{1em}
+
+\textbf{Report structure.}\quad This report comprises two parts. Sections~1--7 document the debugging and repair of a QANet (Yu et al.~\cite{yu2018qanet}) implementation for extractive question answering on a subset of SQuAD~1.1 (Rajpurkar et al.~\cite{rajpurkar2016squad}). Section~8 confirms the repaired model's baseline performance. Sections~9--11 present three hypothesis-driven mechanistic analyses of the repaired model: encoder convolution divergence (H1), CQ Attention directional asymmetry (H2), and Pointer layer wiring necessity (H3). Two appendices provide hyperparameter details (A) and a bug-ID cross-reference index (B).
+
+\vspace{0.6em}
+
+\textbf{Experimental environment.}\quad All experiments were run on Google Colab (NVIDIA T4 / L4 GPU). The framework is PyTorch. Evaluation is performed on a subset of the SQuAD~1.1 development set. The trained checkpoint achieves F1\,=\,70.24, EM\,=\,59.22.
+
+\vspace{0.6em}
+
+\textbf{Notation and abbreviations.}
+
+\begin{center}
+\small
+\begin{tabularx}{0.88\linewidth}{lX}
+\toprule
+\textbf{Symbol} & \textbf{Meaning} \\
+\midrule
+$\Delta$F1 & Change in F1 score relative to baseline upon component removal (eval-time ablation) \\
+AIE & Average Indirect Effect --- causal recovery of span probability when a single sub-layer is restored in a corrupted model \\
+TE & Total Effect --- difference in span probability between clean and fully corrupted forward passes \\
+JSD & Jensen--Shannon Divergence --- symmetric measure of attention weight distribution change \\
+CKA & Centered Kernel Alignment --- similarity between two representation matrices \\
+AUC & Area Under the ROC Curve --- classification accuracy of linear probes (answer-position detection) \\
+Effective Rank & $\exp(\text{singular-value entropy})$ --- number of dimensions a representation effectively utilises \\
+$\|W\|_F$ & Frobenius norm of a weight matrix --- proxy for learned dependency magnitude \\
+CoV & Coefficient of Variation ($\sigma / \mu$) --- normalised dispersion of token norms \\
+$M_1, M_2, M_3$ & Output of the 1st, 2nd, 3rd pass through the Model Encoder (Pointer layer inputs) \\
+C2Q, Q2C & Context-to-Query and Query-to-Context attention directions within CQ Attention \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\vspace{0.6em}
+
+\textbf{How to read this report.}\quad Readers interested only in the mechanistic findings may skip to Sections~9--11. Each hypothesis section is self-contained with its own research question, methodology, results, and conclusions. Debugging sections (1--7) provide the foundation: they establish that the codebase is correct and that the trained model is a legitimate experimental subject. Section~8 confirms the repaired model's baseline performance.
+
+\vspace{0.6em}
+
+\textbf{Bug numbering convention.}\quad Each bug in Sections~1--7 is labelled with a sequential reading number (BUG No.\,1, No.\,2, \ldots, No.\,56). This numbering is assigned solely for reading convenience and does not reflect the chronological order of discovery or repair. The underlying Git repository uses a separate, non-sequential identifier system (e.g.\ \texttt{BUG-021}, \texttt{BUG-012/013}) that originated from the development workflow---merges, splits, and reorganisation during debugging produced gaps and out-of-order tags. Rather than renumber the commits and lose traceability, we retain the original repository tags and provide a cross-reference index in \textbf{Appendix~B}: each row maps a sequential reading number to its repository-level identifier and section location, allowing readers to locate the corresponding Git commit on the \texttt{Fix-Stage-1} branch.
+
+\newpage
+
+% ══════════════════════════════════════════════════════════════════
+% MAIN BODY — arabic page numbers
+% ══════════════════════════════════════════════════════════════════
+\pagenumbering{arabic}
 
 \ReportSection{1 Introduction and Overview}
 
-This report documents the repair of a QANet implementation and the empirical evidence that the repaired system now behaves like a trainable extractive question-answering model rather than a collection of disconnected code paths. The analysis is organized around two intertwined goals. First, the end-to-end pipeline must become executable and empirically meaningful: input processing, forward propagation, loss computation, optimisation, validation, and checkpoint reload must all operate coherently. Second, the learning mechanisms themselves must match their intended theoretical roles, so that later observations about optimisation, regularisation, convolution, attention, and decoding can be attributed to the model rather than to implementation artifacts.
+\vspace{-0.1em}
 
-The later mechanism study is motivated by three hypotheses derived from the repaired architecture. They focus on how information is processed inside the model rather than on superficial hyperparameter comparison: why architecturally identical encoder convolutions (Conv\_0 and Conv\_1) diverge by an order of magnitude in causal importance ($\Delta$F1 ratio $\approx 30\times$) despite sharing the same architecture, whether the directional asymmetry between C2Q and Q2C within CQ Attention persists and intensifies across the architecture change from BiDAF to QANet, and whether the Pointer layer's asymmetric wiring over repeated model-encoder passes reflects genuine functional specialisation or an untested inherited design. The debugging analysis below therefore serves two purposes at once: it explains what had to be repaired, and it establishes why later experiments can be interpreted as evidence about QANet itself.
+This report documents the repair of a QANet implementation and the empirical evidence that the repaired system now behaves like a trainable extractive question-answering model rather than a collection of disconnected code paths. The analysis is organized around two successive goals. First, the end-to-end pipeline must become executable and empirically meaningful: input processing, forward propagation, loss computation, optimisation, validation, and checkpoint reload must all operate coherently. Second, the learning mechanisms themselves must match their intended theoretical roles, so that later mechanistic observations can be attributed to the model rather than to implementation artifacts.
+
+\vspace{0.2em}
+
+The later mechanism study addresses three hypotheses about how information is processed inside the repaired model. They focus on architectural behaviour rather than superficial hyperparameter comparison: what mechanistic differences cause architecturally identical encoder convolutions (Conv\_0 and Conv\_1) to diverge by an order of magnitude in causal importance ($\Delta$F1 ratio $\approx 30\times$) despite sharing the same architecture (H1); whether the directional asymmetry between C2Q and Q2C within CQ Attention, first observed in BiDAF, still holds after QANet's architectural change from LSTMs to convolutions and self-attention, and if so what mechanism maintains it (H2); and whether the Pointer layer's asymmetric wiring---$M_1$ as shared anchor, $M_2$ and $M_3$ as depth-specialised inputs---reflects genuine functional specialisation in the trained model, or whether the assumptions inherited from BiDAF break down under QANet's weight-shared iterative encoding (H3). The debugging sections below document these repairs and confirm that the resulting model is a correct QANet implementation, ensuring that findings in Sections~9--11 reflect genuine model behaviour rather than artifacts.
+
+\vspace{-0.7em}
 
 \ReportSubsection{1.1 Debugging scope}
+
+\vspace{-0.1em}
 
 \begin{itemize}
 \item
@@ -245,43 +511,47 @@ The later mechanism study is motivated by three hypotheses derived from the repa
  \textbf{Mechanism-level implementation flaws}: defects where code may run but the mechanism is mathematically wrong, theoretically inconsistent, or architecturally misaligned with the intended QANet design.
 \end{itemize}
 
+\textbf{Note on the Stage\,1\,/\,Stage\,2 classification.}\quad The original stage labels are retained but not used as an organisational principle, as the boundary is often ambiguous. Bugs are instead grouped by \textbf{functional module and category} (Section~1.2).
+
 \ReportSubsection{1.2 Bug Distribution by Category}
 
+\vspace{-0.1em}
+
 \small
-\setlength{\LTleft}{0pt}
-\setlength{\LTright}{0pt}
+\setlength{\LTleft}{\fill}
+\setlength{\LTright}{\fill}
 \begin{longtable}{
   >{\raggedright\arraybackslash}p{0.10\linewidth}
-  >{\raggedright\arraybackslash}p{0.28\linewidth}
-  >{\centering\arraybackslash}p{0.06\linewidth}
-  >{\raggedright\arraybackslash}p{0.48\linewidth}}
+  >{\raggedright\arraybackslash}p{0.38\linewidth}
+  >{\centering\arraybackslash}p{0.08\linewidth}
+  >{\raggedright\arraybackslash}p{0.28\linewidth}}
 \toprule
-\textbf{Section} & \textbf{Category} & \textbf{Count} & \textbf{Bug IDs} \\
+\textbf{Section} & \textbf{Category} & \textbf{Count} & \textbf{Bug No.} \\
 \midrule
 \endfirsthead
 \toprule
-\textbf{Section} & \textbf{Category} & \textbf{Count} & \textbf{Bug IDs} \\
+\textbf{Section} & \textbf{Category} & \textbf{Count} & \textbf{Bug No.} \\
 \midrule
 \endhead
 \bottomrule
 \endfoot
-\textbf{\S 2} & Input Embedding \& Projection & 5 & BUG-021, BUG-012/013, BUG-014/015, BUG-064, BUG-N013 \\
+\textbf{\S 2} & Input Embedding \& Projection          & 5 & 1--5 \\
 \midrule
-\textbf{\S 3} & Convolution Operators          & 3 & BUG-006, BUG-007/008, BUG-009/010/011 \\
-              & Encoder Architecture           & 7 & BUG-016, BUG-017/018/019, BUG-N006, BUG-N008, BUG-N009, BUG-N010, BUG-N012 \\
-              & Normalization, Activation \& Dropout & 6 & BUG-004, BUG-044, BUG-037, BUG-036, BUG-035, BUG-048 \\
-              & Weight Initialization          & 4 & BUG-041, BUG-042, BUG-043, BUG-062 \\
+\textbf{\S 3} & Convolution Operators                  & 3 & 6--8 \\
+              & Encoder Architecture                   & 7 & 9--15 \\
+              & Normalization, Activation \& Dropout   & 6 & 16--21 \\
+              & Weight Initialization                  & 4 & 22--25 \\
 \midrule
-\textbf{\S 4} & Attention Mechanisms           & 5 & BUG-005, BUG-051, BUG-038/050, BUG-N003, BUG-049 \\
+\textbf{\S 4} & Attention Mechanisms                   & 5 & 26--30 \\
 \midrule
 \textbf{\S 5} & \multicolumn{3}{l}{\textit{Structural repairs only; documented inline in Section 5.}} \\
 \midrule
-\textbf{\S 6} & Output Layer \& Loss Function  & 4 & BUG-003, BUG-020, BUG-N007, BUG-N016 \\
+\textbf{\S 6} & Output Layer \& Loss Function          & 4 & 31--34 \\
 \midrule
-\textbf{\S 7} & Evaluation \& Inference        & 5 & BUG-001/002, BUG-N002, BUG-034, BUG-N011, BUG-N018 \\
-              & Optimizers                     & 7 & BUG-022, BUG-023, BUG-052, BUG-053, BUG-039/040, BUG-054, BUG-055 \\
-              & Learning Rate Schedulers       & 5 & BUG-024, BUG-056, BUG-057, BUG-058, BUG-N001 \\
-              & Training Pipeline              & 5 & BUG-025, BUG-026, BUG-059, BUG-N015, BUG-N017 \\
+\textbf{\S 7} & Evaluation \& Inference                & 5 & 35--39 \\
+              & Optimizers                             & 7 & 40--46 \\
+              & Learning Rate Schedulers               & 5 & 47--51 \\
+              & Training Pipeline                      & 5 & 52--56 \\
 \end{longtable}
 \normalsize
 
@@ -293,7 +563,7 @@ The later mechanism study is motivated by three hypotheses derived from the repa
 Word embeddings, character embeddings, highway transformation, and immediate embedding-side projection.
 \par}
 
-\begin{bugbox}{BUG-021 \checkmark{} Context word/char embedding lookup swap}
+\begin{bugbox}{BUG No.\,1 \quad Context word/char embedding lookup swap}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/qanet.py L70\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -327,7 +597,7 @@ Qw, Qc = self.word_emb(Qwid), self.char_emb(Qcid)
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-012/013 \checkmark{} Highway transpose fixed}
+\begin{bugbox}{BUG No.\,2 \quad Highway transpose fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/embedding.py L19\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -363,7 +633,7 @@ gate = torch.sigmoid(self.gate[i](x))
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-014/015 \checkmark{} Character-tensor permutation before Conv2d fixed}
+\begin{bugbox}{BUG No.\,3 \quad Character-tensor permutation before Conv2d fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/embedding.py L44\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -402,7 +672,7 @@ ch_emb = self.conv2d(ch_emb)
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-064 \checkmark{} Pretrained word embeddings frozen}
+\begin{bugbox}{BUG No.\,4 \quad Pretrained word embeddings frozen}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Regularization Techniques \;\textbar\; Source: Models/qanet.py L44\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -433,13 +703,13 @@ freeze=True
 \end{Verbatim}
 \vspace{0.22em}
 \FieldLabel{Impact on Training}
-\textbf{Pre-fix:} Pre-trained GloVe representations drift during training, increasing overfitting risk on the relatively small SQuAD dataset and weakening the intended lexical prior. Regularization is applied to the wrong quantity or with the wrong strength, so the model can overfit or suppress the wrong signal. \par\smallskip
+\textbf{Pre-fix:} Pre-trained GloVe representations drift during training, increasing overfitting risk on the relatively small SQuAD subset and weakening the intended lexical prior. Regularization is applied to the wrong quantity or with the wrong strength, so the model can overfit or suppress the wrong signal. \par\smallskip
 \textbf{Post-fix:} Word embeddings remain frozen at their pre-trained values, preserving generalization and aligning the implementation with the QANet paper. 
 \par
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N013 \checkmark{} Character embedding cross-word leakage removed}
+\begin{bugbox}{BUG No.\,5 \quad Character embedding cross-word leakage removed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Embedding Module \;\textbar\; Source: Models/embedding.py L27-50\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -455,7 +725,7 @@ A per-word character encoder should convolve only across the character axis of o
 \par
 \vspace{0.35em}
 \FieldLabel{Corrective Action Taken}
-Replace the 2D character convolution with a 1D per-word convolution: flatten the batch and token axes together, convolve only over character positions, then max-pool and reshape back. This supersedes BUG-014/015: the earlier permutation repair was a necessary runtime fix for the original 2D path, but the final per-word 1D formulation removes that path entirely.
+Replace the 2D character convolution with a 1D per-word convolution: flatten the batch and token axes together, convolve only over character positions, then max-pool and reshape back. This supersedes BUG No.\,3: the earlier permutation repair was a necessary runtime fix for the original 2D path, but the final per-word 1D formulation removes that path entirely.
 \par
 \vspace{0.35em}
 \begin{Verbatim}[commandchars=\\\{\},fontsize=\footnotesize,breaklines=true,breaksymbol={},frame=leftline,framerule=2pt,rulecolor=\color{gray!40},xleftmargin=6pt,formatcom=\singlespacing]
@@ -494,7 +764,7 @@ ch_emb = self.act(ch_emb)
 Custom Conv1d, Conv2d padding, and depthwise-separable convolution behaviour within the encoder stack.
 \par}
 
-\begin{bugbox}{BUG-006 \checkmark{} Conv1d unfold dimension fixed}
+\begin{bugbox}{BUG No.\,6 \quad Conv1d unfold dimension fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/conv.py L55\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -527,7 +797,7 @@ L_out = x.size(2) - self.kernel_size + 1
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-007/008 \checkmark{} Conv2d width-padding height mismatch fixed}
+\begin{bugbox}{BUG No.\,7 \quad Conv2d width-padding height mismatch fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/conv.py L124\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -563,7 +833,7 @@ x = torch.cat([pad_w, x, pad_w], dim=3)
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-009/010/011 \checkmark{} Depthwise-separable convolution order restored}
+\begin{bugbox}{BUG No.\,8 \quad Depthwise-separable convolution order restored}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/conv.py L175\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -602,7 +872,7 @@ def forward(self, x):
 Positional encoding, normalization indexing, feed-forward structure, shared encoder design, projection layers, and stochastic depth.
 \par}
 
-\begin{bugbox}{BUG-016 \checkmark{} Positional-encoding frequency broadcasting fixed}
+\begin{bugbox}{BUG No.\,9 \quad Positional-encoding frequency broadcasting fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/encoder.py L29-32\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -634,7 +904,7 @@ Unsqueeze the frequency tensor on dimension 1 instead of dimension 0.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-017/018/019 \checkmark{} Encoder normalization indexing fixed}
+\begin{bugbox}{BUG No.\,10 \quad Encoder normalization indexing fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/encoder.py L131\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -666,7 +936,7 @@ Use self.norms{[}i{]} rather than self.norms{[}i+1{]}.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N006 \checkmark{} Two-layer FFN restored}
+\begin{bugbox}{BUG No.\,11 \quad Two-layer FFN restored}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Encoder Architecture \;\textbar\; Source: Models/encoder.py L96-97, L144-148\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -706,7 +976,7 @@ out = self.act(out)
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N008 \checkmark{} Shared context/question encoder structure restored}
+\begin{bugbox}{BUG No.\,12 \quad Shared context/question encoder structure restored}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Encoder Architecture \;\textbar\; Source: Models/Normalizations/normalization.py L8-20 + Models/qanet.py L50-53, 74-75, 79-80\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -776,7 +1046,7 @@ Introduce channel-only LayerNorm for channel-first tensors, and merge separate c
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N009 \checkmark{} Embedding projection changed to standard Conv1d(k=1)}
+\begin{bugbox}{BUG No.\,13 \quad Embedding projection changed to standard Conv1d(k=1)}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Convolutional Modules \;\textbar\; Source: Models/qanet.py L50\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -809,7 +1079,7 @@ Replace the depthwise-separable projection with a standard pointwise Conv1d of k
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N010 \checkmark{} Model-encoder input projection changed to standard Conv1d(k=1)}
+\begin{bugbox}{BUG No.\,14 \quad Model-encoder input projection changed to standard Conv1d(k=1)}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Convolutional Modules \;\textbar\; Source: Models/qanet.py L58\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -842,7 +1112,7 @@ Replace the depthwise-separable resizer with a pointwise Conv1d of kernel size 1
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N012 \checkmark{} Stochastic depth implemented}
+\begin{bugbox}{BUG No.\,15 \quad Stochastic depth implemented}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Regularization Techniques \;\textbar\; Source: Models/encoder.py EncoderBlock \& Models/qanet.py shared encoder/model-encoder call sites\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -858,7 +1128,7 @@ Element-wise dropout suppresses individual activations within a layer, whereas s
 \par
 \vspace{0.35em}
 \FieldLabel{Corrective Action Taken}
-Implement layer-level stochastic depth and apply it consistently across convolution, self-attention, and FFN sublayers with depth-aware survival probabilities. This supersedes the call-site portion of BUG-N008: the shared encoder route first had to be restored, and this change then redefined that shared route to carry the intended layer-dropout schedule.
+Implement layer-level stochastic depth and apply it consistently across convolution, self-attention, and FFN sublayers with depth-aware survival probabilities. This supersedes the call-site portion of BUG No.\,12: the shared encoder route first had to be restored, and this change then redefined that shared route to carry the intended layer-dropout schedule.
 \par
 \vspace{0.35em}
 \begin{Verbatim}[commandchars=\\\{\},fontsize=\footnotesize,breaklines=true,breaksymbol={},frame=leftline,framerule=2pt,rulecolor=\color{gray!40},xleftmargin=6pt,formatcom=\singlespacing]
@@ -921,7 +1191,7 @@ Implement layer-level stochastic depth and apply it consistently across convolut
 Normalization behaviour, activation correctness, and dropout mechanics.
 \par}
 
-\begin{bugbox}{BUG-004 \checkmark{} LayerNorm keepdim broadcasting fix}
+\begin{bugbox}{BUG No.\,16 \quad LayerNorm keepdim broadcasting fix}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/Normalizations/layernorm.py L37\&38\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -956,7 +1226,7 @@ x_norm = (x - mean) / torch.sqrt(var + self.eps)
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-044 \checkmark{} LayerNorm affine order fixed}
+\begin{bugbox}{BUG No.\,17 \quad LayerNorm affine order fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Normalization \;\textbar\; Source: Models/Normalizations/layernorm.py L41\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -988,7 +1258,7 @@ Apply the affine transformation only after the normalized activations have been 
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-037 \checkmark{} GroupNorm grouping reshape order fixed}
+\begin{bugbox}{BUG No.\,18 \quad GroupNorm grouping reshape order fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Normalization \;\textbar\; Source: Models/Normalizations/groupnorm.py L35\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1020,7 +1290,7 @@ Reshape and order axes so that groups are formed as contiguous channel blocks of
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-036 \checkmark{} ReLU clamp direction fixed}
+\begin{bugbox}{BUG No.\,19 \quad ReLU clamp direction fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Activation Functions \;\textbar\; Source: Models/Activations/relu.py L12\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1052,7 +1322,7 @@ Restore the standard ReLU rule max(x, 0).
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-035 \checkmark{} LeakyReLU branch logic fixed}
+\begin{bugbox}{BUG No.\,20 \quad LeakyReLU branch logic fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Activation Functions \;\textbar\; Source: Models/Activations/leakeyReLU.py L19\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1084,7 +1354,7 @@ Swap the branch logic so that only the negative side receives the leak coefficie
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-048 \checkmark{} Inverted dropout scaling fixed}
+\begin{bugbox}{BUG No.\,21 \quad Inverted dropout scaling fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Regularization Techniques \;\textbar\; Source: Models/dropout.py L17\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1122,7 +1392,7 @@ Use correct inverted-dropout scaling on the kept activations during training.
 Parameter initialization formulas and their effect on optimization stability.
 \par}
 
-\begin{bugbox}{BUG-041 \checkmark{} Kaiming normal formula fixed}
+\begin{bugbox}{BUG No.\,22 \quad Kaiming normal formula fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Initialization \;\textbar\; Source: Models/Initializations/kaiming.py L25\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1155,7 +1425,7 @@ tensor.normal_(0.0, std)
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-042 \checkmark{} Kaiming uniform formula fixed}
+\begin{bugbox}{BUG No.\,23 \quad Kaiming uniform formula fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Initialization \;\textbar\; Source: Models/Initializations/kaiming.py L38\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1188,7 +1458,7 @@ bound = math.sqrt(3.0) * std
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-043 \checkmark{} Xavier normal denominator fixed}
+\begin{bugbox}{BUG No.\,24 \quad Xavier normal denominator fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Initialization \;\textbar\; Source: Models/Initializations/xavier.py L24\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1221,7 +1491,7 @@ tensor.normal_(0.0, std)
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-062 \checkmark{} Xavier uniform denominator fixed}
+\begin{bugbox}{BUG No.\,25 \quad Xavier uniform denominator fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Initialization \;\textbar\; Source: Models/Initializations/xavier.py L36\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1262,7 +1532,7 @@ bound = math.sqrt(3.0) * std
 Multi-head self-attention and context-query attention.
 \par}
 
-\begin{bugbox}{BUG-005 \checkmark{} CQAttention batched-matmul order fixed}
+\begin{bugbox}{BUG No.\,26 \quad CQAttention batched-matmul order fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/attention.py L38\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1294,7 +1564,7 @@ Change the multiplication to torch.bmm(S1, Q).
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-051 \checkmark{} Context/query masks passed in correct order}
+\begin{bugbox}{BUG No.\,27 \quad Context/query masks passed in correct order}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/qanet.py L82\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1326,7 +1596,7 @@ Pass cmask and qmask in the correct order.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-038/050 \checkmark{} Self-attention output no longer discarded}
+\begin{bugbox}{BUG No.\,28 \quad Self-attention output no longer discarded}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Attention-Based Modules \;\textbar\; Source: Models/encoder.py L117\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1358,7 +1628,7 @@ Use a residual addition out = out + res rather than overwriting with res.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N003 \checkmark{} Missing 1/√dk attention scaling restored}
+\begin{bugbox}{BUG No.\,29 \quad Missing 1/√dk attention scaling restored}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Attention-Based Modules \;\textbar\; Source: Models/encoder.py L78\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1393,7 +1663,7 @@ attn = mask_logits(attn, mask)
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-049 \checkmark{} Multi-head head/batch reassembly fixed}
+\begin{bugbox}{BUG No.\,30 \quad Multi-head head/batch reassembly fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Attention-Based Modules \;\textbar\; Source: Models/encoder.py L84\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1431,7 +1701,7 @@ attn = attn.permute(1, 2, 0, 3).contiguous().view(batch_size, length, -1)
 
 \ReportSubsection{5.1 Model Encoder}
 
-The model encoder reuses the same encoder-block machinery across three passes. The bugs most directly affecting this stage are already accounted for above: BUG-N006 (FFN structure), BUG-N010 (model-encoder input projection), BUG-N012 (stochastic depth), BUG-038/050 (self-attention residual), BUG-N003 (attention scaling), and the shared convolution / normalization fixes in the embedding-encoder section. No additional distinct bug IDs are introduced only for the model encoder beyond those already counted in the 56-bug set.
+The model encoder reuses the same encoder-block machinery across three passes. The bugs most directly affecting this stage are already accounted for above: BUG No.\,11 (FFN structure), No.\,14 (model-encoder input projection), No.\,15 (stochastic depth), No.\,28 (self-attention residual), No.\,29 (attention scaling), and the shared convolution / normalization fixes in the embedding-encoder section. No additional distinct bug IDs are introduced only for the model encoder beyond those already counted in the 56-bug set.
 
 \ReportSection{6 Output Layer: Bug Repairs}
 
@@ -1441,7 +1711,7 @@ The model encoder reuses the same encoder-block machinery across three passes. T
 Pointer head, NLL/CE loss interface, and loss scaling.
 \par}
 
-\begin{bugbox}{BUG-003 \checkmark{} NLL loss argument order fixed}
+\begin{bugbox}{BUG No.\,31 \quad NLL loss argument order fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Gradient Computation \;\textbar\; Source: Losses/loss.py L6\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1473,7 +1743,7 @@ Pass the log-probabilities first and the target indices second.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-020 \checkmark{} Pointer-head concatenation dimension fixed}
+\begin{bugbox}{BUG No.\,32 \quad Pointer-head concatenation dimension fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Forward Propagation \;\textbar\; Source: Models/heads.py L23\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1505,7 +1775,7 @@ Concatenate along dimension 1 rather than dimension 0.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N007 \checkmark{} Extra 0.5 loss scaling removed}
+\begin{bugbox}{BUG No.\,33 \quad Extra 0.5 loss scaling removed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Loss Function \;\textbar\; Source: Losses/loss.py L7\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1538,7 +1808,7 @@ Remove the extra factor of 0.5 from the loss definition.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N016 \checkmark{} Output/loss interface aligned around raw logits}
+\begin{bugbox}{BUG No.\,34 \quad Output/loss interface aligned around raw logits}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Loss Function \;\textbar\; Source: Models/heads.py L29-30 \& Losses/loss.py L6-7 \& EvaluateTools/eval\_utils.py L107-113\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1554,7 +1824,7 @@ Probability normalization must occur in exactly one place. If the head already a
 \par
 \vspace{0.35em}
 \FieldLabel{Corrective Action Taken}
-Make the pointer head return masked raw logits, move log\_softmax into the NLL loss, and apply log-prob conversion explicitly in evaluation decoding. This supersedes BUG-N007 inside the loss path: the earlier fix restored the correct loss magnitude, and this later interface repair restored the correct raw-logit versus log-probability contract.
+Make the pointer head return masked raw logits, move log\_softmax into the NLL loss, and apply log-prob conversion explicitly in evaluation decoding. This supersedes BUG No.\,33 inside the loss path: the earlier fix restored the correct loss magnitude, and this later interface repair restored the correct raw-logit versus log-probability contract.
 \par
 \vspace{0.35em}
 \begin{Verbatim}[commandchars=\\\{\},fontsize=\footnotesize,breaklines=true,breaksymbol={},frame=leftline,framerule=2pt,rulecolor=\color{gray!40},xleftmargin=6pt,formatcom=\singlespacing]
@@ -1588,7 +1858,7 @@ Make the pointer head return masked raw logits, move log\_softmax into the NLL l
 Checkpoint loading, span decoding, evaluation semantics, and checkpoint-configuration consistency.
 \par}
 
-\begin{bugbox}{BUG-001/002 \checkmark{} Checkpoint load key fixed to model\_state}
+\begin{bugbox}{BUG No.\,35 \quad Checkpoint load key fixed to model\_state}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Checkpoint Management \;\textbar\; Source: EvaluateTools/evaluate.py L119\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1620,7 +1890,7 @@ Restore the model from ckpt{[}``model\_state''{]} rather than ckpt{[}``model''{]
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{notebugbox}{BUG-N002 $\triangle$ torch.load(..., weights\_only=False) compatibility note}
+\begin{notebugbox}{BUG No.\,36 \quad torch.load(..., weights\_only=False) compatibility note}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Checkpoint Management \;\textbar\; Source: EvaluateTools/evaluate.py L118\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1652,7 +1922,7 @@ Set weights\_only=False explicitly for trusted internal checkpoints in the targe
 \vspace{0.35em}
 \end{notebugbox}
 
-\begin{bugbox}{BUG-034 \checkmark{} Evaluation argmax dimension fixed}
+\begin{bugbox}{BUG No.\,37 \quad Evaluation argmax dimension fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Performance Evaluation \;\textbar\; Source: EvaluateTools/eval\_utils.py L107-108\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1686,7 +1956,7 @@ Reduce over dim=1 rather than dim=0.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N011 \checkmark{} Joint span decoding restored}
+\begin{bugbox}{BUG No.\,38 \quad Joint span decoding restored}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Performance Evaluation / Inference Decoding \;\textbar\; Source: EvaluateTools/eval\_utils.py L107-113\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1702,7 +1972,7 @@ The decoding objective is joint under the constraint $s \le e$. Independent argm
 \par
 \vspace{0.35em}
 \FieldLabel{Corrective Action Taken}
-Replace independent argmax plus min/max swap with joint outer-product decoding under an upper-triangular validity mask. This supersedes BUG-034: the earlier axis fix restored per-sample reduction, and this later repair then replaced the whole decoder with the correct joint span objective.
+Replace independent argmax plus min/max swap with joint outer-product decoding under an upper-triangular validity mask. This supersedes BUG No.\,37: the earlier axis fix restored per-sample reduction, and this later repair then replaced the whole decoder with the correct joint span objective.
 \par
 \vspace{0.35em}
 \begin{Verbatim}[commandchars=\\\{\},fontsize=\footnotesize,breaklines=true,breaksymbol={},frame=leftline,framerule=2pt,rulecolor=\color{gray!40},xleftmargin=6pt,formatcom=\singlespacing]
@@ -1729,7 +1999,7 @@ Replace independent argmax plus min/max swap with joint outer-product decoding u
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{rednotebugbox}{BUG-N018 $\triangle$ Checkpoint config is not restored during evaluation}
+\begin{rednotebugbox}{BUG No.\,39 \quad Checkpoint config is not restored during evaluation}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Checkpoint Management \;\textbar\; Source: EvaluateTools/evaluate.py\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1771,7 +2041,7 @@ model = QANet(word_mat, char_mat, args)
 Adam state, momentum state, weight decay, squared-gradient accumulation, and bias correction.
 \par}
 
-\begin{bugbox}{BUG-022 \checkmark{} Adam state-key mismatch}
+\begin{bugbox}{BUG No.\,40 \quad Adam state-key mismatch}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Parameter Update \;\textbar\; Source: Optimizers/adam.py L63\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1805,7 +2075,7 @@ Unify the Adam state dictionary so both moment buffers are initialized and read 
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-023 \checkmark{} SGD-momentum state-key mismatch}
+\begin{bugbox}{BUG No.\,41 \quad SGD-momentum state-key mismatch}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Parameter Update \;\textbar\; Source: Optimizers/sgd\_momentum.py L49\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1839,7 +2109,7 @@ Align the momentum-buffer key names across initialization and update logic.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-052 \checkmark{} Adam weight-decay sign fixed}
+\begin{bugbox}{BUG No.\,42 \quad Adam weight-decay sign fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Optimization Strategies \;\textbar\; Source: Optimizers/adam.py L53\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1871,7 +2141,7 @@ Reverse the sign of the decay term so it performs shrinkage rather than expansio
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-053 \checkmark{} Adam second moment uses squared gradients}
+\begin{bugbox}{BUG No.\,43 \quad Adam second moment uses squared gradients}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Optimization Strategies \;\textbar\; Source: Optimizers/adam.py L69\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1903,7 +2173,7 @@ Accumulate squared gradients in the second-moment buffer.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-039/040 \checkmark{} Adam bias-correction exponentiation fixed}
+\begin{bugbox}{BUG No.\,44 \quad Adam bias-correction exponentiation fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Optimization Strategies \;\textbar\; Source: Optimizers/adam.py L72-73\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1937,7 +2207,7 @@ Use the standard Adam bias-correction formulas with the correct coefficient powe
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-054 \checkmark{} SGD weight-decay sign fixed}
+\begin{bugbox}{BUG No.\,45 \quad SGD weight-decay sign fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Optimization Strategies \;\textbar\; Source: Optimizers/sgd.py L38\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -1969,7 +2239,7 @@ Correct the sign of the decay term in the SGD update.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-055 \checkmark{} SGD momentum update direction fixed}
+\begin{bugbox}{BUG No.\,46 \quad SGD momentum update direction fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Optimization Strategies \;\textbar\; Source: Optimizers/sgd\_momentum.py L54\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2007,7 +2277,7 @@ Restore the standard momentum-update direction so velocity reinforces descent ra
 Cosine, lambda, and step-based schedules.
 \par}
 
-\begin{bugbox}{BUG-024 \checkmark{} Cosine scheduler math.pi fix}
+\begin{bugbox}{BUG No.\,47 \quad Cosine scheduler math.pi fix}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Learning Rate Scheduling \;\textbar\; Source: Schedulers/cosine\_scheduler.py L28\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2039,7 +2309,7 @@ Restore the standard cosine expression using math.pi.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-056 \checkmark{} Missing 0.5 factor in cosine scheduler fixed}
+\begin{bugbox}{BUG No.\,48 \quad Missing 0.5 factor in cosine scheduler fixed}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Learning Rate Scheduling \;\textbar\; Source: Schedulers/cosine\_scheduler.py L28\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2071,7 +2341,7 @@ Restore the missing 0.5 factor.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-057 \checkmark{} Lambda scheduler multiplicative fix}
+\begin{bugbox}{BUG No.\,49 \quad Lambda scheduler multiplicative fix}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Learning Rate Scheduling \;\textbar\; Source: Schedulers/lambda\_scheduler.py L23\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2103,7 +2373,7 @@ Apply the lambda function as a multiplicative scale on the base learning rate.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-058 \checkmark{} Step scheduler exponentiation fix}
+\begin{bugbox}{BUG No.\,50 \quad Step scheduler exponentiation fix}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Learning Rate Scheduling \;\textbar\; Source: Schedulers/step\_scheduler.py L25\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2135,7 +2405,7 @@ Use the correct exponent corresponding to the number of completed decay interval
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N001 \checkmark{} Lambda warmup scheduler redesigned into a picklable object}
+\begin{bugbox}{BUG No.\,51 \quad Lambda warmup scheduler redesigned into a picklable object}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Learning Rate Scheduling \;\textbar\; Source: Schedulers/scheduler.py L29\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2179,7 +2449,7 @@ Redesign the warmup scheduler as a picklable callable object with explicit state
 Argument construction, backpropagation, gradient clipping, best-checkpoint retention, and EMA integration.
 \par}
 
-\begin{bugbox}{BUG-025 \checkmark{} argparse.Namespace construction fixed}
+\begin{bugbox}{BUG No.\,52 \quad argparse.Namespace construction fixed}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Training Loop Logic \;\textbar\; Source: TrainTools/train.py L112\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2211,7 +2481,7 @@ Rebuild the Namespace object using keyword arguments instead of a single positio
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-026 \checkmark{} loss.item().backward() fixed to loss.backward()}
+\begin{bugbox}{BUG No.\,53 \quad loss.item().backward() fixed to loss.backward()}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Runtime Failure / Gradient Computation \;\textbar\; Source: TrainTools/train\_utils.py L34\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2243,7 +2513,7 @@ Call backward() on the tensor-valued loss directly.
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-059 \checkmark{} Gradient clipping moved before optimizer step}
+\begin{bugbox}{BUG No.\,54 \quad Gradient clipping moved before optimizer step}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Optimization Strategies \;\textbar\; Source: TrainTools/train\_utils.py L35\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2277,7 +2547,7 @@ Move gradient clipping to the standard position between backpropagation and the 
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N015 \checkmark{} Best checkpoint retained explicitly}
+\begin{bugbox}{BUG No.\,55 \quad Best checkpoint retained explicitly}
 {\color{MetaGray}\small Stage: 1 \;\textbar\; Category: Checkpoint Management / Training-Loop Semantics \;\textbar\; Source: TrainTools/train.py L206-223 \& TrainTools/train\_utils.py L44-60\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2316,7 +2586,7 @@ Save and retain the best-performing checkpoint separately based on validation me
 \vspace{0.35em}
 \end{bugbox}
 
-\begin{bugbox}{BUG-N017 \checkmark{} EMA support added and integrated}
+\begin{bugbox}{BUG No.\,56 \quad EMA support added and integrated}
 {\color{MetaGray}\small Stage: 2 \;\textbar\; Category: Deep Learning Mechanism / Regularization Techniques \;\textbar\; Source: TrainTools/train.py \& TrainTools/train\_utils.py \& TrainTools/ema.py\par}
 \vspace{0.22em}
 \FieldLabel{Nature}
@@ -2397,7 +2667,7 @@ Add EMA state management and integrate its update and usage into the train/eval 
 
 
 
-\ReportSection{8 Notebook Implementations, Results, and Bridge to Later Mechanism Studies}
+\ReportSection{8 Notebook Implementations and Results}
 
 \ReportSubsection{8.1 Actual notebook implementations}
 
@@ -2486,15 +2756,15 @@ where \(W\) is the warmup horizon and \(\eta\) is the target post-warmup rate. I
 The Adam route is best read from the logged batch-32 checkpoints. In this subsection, step 40800 is the single selected checkpoint highlighted in the figures because it is the strongest logged \texttt{TEST} F1 point and sits on the same late plateau as the strongest \texttt{TEST} EM. The plotted curves therefore refer to the in-loop batch-32 training record, while the standalone evaluation of \texttt{model\_best.pt} is reported separately afterward.
 
 \begin{center}
-\begin{minipage}{0.32\linewidth}
-\centering
-\SafeIncludeGraphics[width=\linewidth]{prism-uploads/adam_lambda_loss_shared_step_40800_exact_style.png}
-\end{minipage}\hfill
-\begin{minipage}{0.32\linewidth}
+\SafeIncludeGraphics[width=0.65\linewidth]{prism-uploads/adam_lambda_loss_shared_step_40800_exact_style.png}
+
+\vspace{0.5em}
+
+\begin{minipage}{0.48\linewidth}
 \centering
 \SafeIncludeGraphics[width=\linewidth]{prism-uploads/adam_lambda_valid_test_f1_shared_step_40800_exact_style.png}
 \end{minipage}\hfill
-\begin{minipage}{0.32\linewidth}
+\begin{minipage}{0.48\linewidth}
 \centering
 \SafeIncludeGraphics[width=\linewidth]{prism-uploads/adam_lambda_valid_test_em_shared_step_40800_exact_style.png}
 \end{minipage}
@@ -2519,7 +2789,7 @@ Standalone evaluation of \texttt{model\_best.pt} & --- & --- & --- & loss 4.4143
 \end{center}
 \normalsize
 
-Three conclusions follow from this routine. First, the warmup phase is behaving correctly: the learning rate rises conservatively to its target value while both printed monitors improve rather than diverge. Second, the loss trajectory (left panel) shows that the lowest \texttt{TEST} loss occurs much earlier than the selected step-40800 checkpoint, whereas \texttt{TEST} F1/EM continue improving into the late plateau. The later part of training is therefore still refining span ranking and joint boundary selection even after token-level negative log-likelihood has stopped identifying the best checkpoint. Third, \texttt{VALID(train)} loss continues to decrease after step 40800 while \texttt{TEST} has already flattened. That is exactly the regime in which the stronger dropout, EMA, and shorter patience become useful: the model can still fit the training-side signal, but that no longer guarantees a better external checkpoint.
+Three conclusions follow from this routine. First, the warmup phase is behaving correctly: the learning rate rises conservatively to its target value while both printed monitors improve rather than diverge. Second, the loss trajectory (left panel) shows that the lowest \texttt{TEST} loss occurs much earlier than the selected step-40800 checkpoint, whereas \texttt{TEST} F1/EM continue improving into the late plateau. The later part of training is therefore still refining span ranking and joint boundary selection even after token-level negative log-likelihood has stopped identifying the best checkpoint. Third, \texttt{VALID(train)} loss continues to decrease after step 40800 while \texttt{TEST} has already flattened. That is exactly the regime in which the stronger dropout, EMA, and shorter patience become useful: the model can still fit the training-side signal, but that no longer guarantees a better external checkpoint. Note that the loss curve alone might suggest early stopping around steps 10\,000--20\,000; we deliberately extended training beyond that point to verify whether F1/EM would continue to improve and whether a genuinely better checkpoint exists at later steps---the trajectories above confirm that it does.
 
 
 
@@ -2542,7 +2812,9 @@ Position Encoding $\rightarrow$ Conv\_0 $\rightarrow$ Conv\_1 $\rightarrow$ Self
 Each sub-layer is followed by residual addition, so later components operate on the accumulated residual stream rather than on isolated features.
 \end{tcolorbox}
 
-The QANet paper's ablation study (Table~5, Yu et al.\ 2018) shows that convolution contributes more to performance than Self-Attention ($-2.7$~F1 vs $-1.3$~F1 upon removal, measured after retraining). However, the paper treats both convolution layers as a single unit and does not examine Conv\_0 and Conv\_1 separately.
+The same 7 encoder blocks are applied iteratively three times (weight-shared), producing intermediate representations $M_1$, $M_2$, $M_3$ after each pass.
+
+The QANet paper's ablation study (Table~5, \cite{yu2018qanet}) shows that convolution contributes more to performance than Self-Attention ($-2.7$~F1 vs $-1.3$~F1 upon removal, measured after retraining). However, the paper treats both convolution layers as a single unit and does not examine Conv\_0 and Conv\_1 separately.
 
 By separating the two through eval-time ablation and causal tracing, both methods agree that Conv\_1 is the most important component by a large margin. Ablation (measuring necessity) yields:
 
@@ -2550,11 +2822,7 @@ By separating the two through eval-time ablation and causal tracing, both method
 \textbf{Conv\_1 $\gg$ Self-Attention $>$ FFN $>$ Conv\_0}
 \end{center}
 
-Conv\_1 is the \textbf{most important} of all four component types ($-32.54$~F1 upon removal), while Conv\_0 is the \textbf{least important} ($-1.09$~F1)---a $\Delta$F1 ratio of $32.54 / 1.09 \approx 30\times$. Yet Conv\_0 and Conv\_1 are \textbf{architecturally identical}: both are depthwise separable convolutions with kernel size $k=5$ and the same hidden dimension, trained end-to-end under the same objective.
-
-\textbf{A note on the 30$\times$ ratio.} This is the ratio of eval-time ablation $\Delta$F1 values. The denominator ($-1.09$~F1) is small, so the precise multiplier is sensitive to measurement granularity---if Conv\_0's drop were 0.5~F1 instead, the ratio would be $\sim$65$\times$. Causal tracing gives a different ratio (AIE share: $71.3\% / 15.3\% \approx 4.7\times$), confirming that the precise multiplier is method-dependent. The \textbf{qualitative ordering} (Conv\_1 $\gg$ Conv\_0) is robust across both methods, but the ``30$\times$'' should be read as ``order-of-magnitude difference'' rather than a precise measurement. We retain it as a concise shorthand for the large, reproducible gap.
-
-The same architecture produces both the most important and the least important component. Architecture alone cannot explain this gap; the divergence must relate to their different positions in the pipeline and the different functions they consequently learn during training.
+Conv\_1 is the \textbf{most important} of all four component types ($-32.54$~F1 upon removal), while Conv\_0 is the \textbf{least important} ($-1.09$~F1)---a $\Delta$F1 ratio of $\approx 30\times$.\footnote{The precise multiplier is sensitive to the small denominator ($-1.09$~F1) and varies by method: causal tracing gives $\approx 4.7\times$ (AIE share). The \emph{qualitative ordering} (Conv\_1 $\gg$ Conv\_0) is robust across both methods; ``$30\times$'' is retained as shorthand for the order-of-magnitude gap.} Yet Conv\_0 and Conv\_1 are \textbf{architecturally identical}: both are depthwise separable convolutions with kernel size $k=5$ and the same hidden dimension, trained end-to-end under the same objective. The same architecture produces both the most important and the least important component---architecture alone cannot explain this gap; the divergence must relate to their different positions in the pipeline and the different functions they consequently learn during training.
 
 \begin{tcolorbox}[enhanced,breakable,colback=white,colframe=BugBlueBorder,boxrule=0.5pt,arc=1.5mm,left=2.8mm,right=2.8mm,top=1.8mm,bottom=1.8mm]
 \textbf{H1 research question.} Conv\_0 and Conv\_1 share identical architecture yet exhibit an order-of-magnitude difference in importance ($\Delta$F1 ratio $\approx 30\times$). What mechanistic differences between them explain this gap?
@@ -2564,23 +2832,21 @@ The same architecture produces both the most important and the least important c
 
 We address this question through three experiments, each building on the previous:
 
-\textbf{Experiment~1 (Is the gap real?)} We quantify component importance using two independent methods---eval-time ablation and causal tracing---and check for output-magnitude confounds. The goal is to establish that the 30$\times$ gap is reproducible and not an artefact.
+\textbf{Experiment~1 (Is the gap real?)} We quantify component importance using two independent methods---eval-time ablation (global and per-block) and causal tracing---and check for output-magnitude confounds. The goal is to establish that the Conv\_1\,$\gg$\,Conv\_0 importance gap is reproducible and not an artefact.
 
-\textbf{Experiment~2 (What is the functional difference?)} Experiment~1 confirms that Conv\_1 is far more important than Conv\_0 ($\Delta$F1 ratio $\approx 30\times$). So how do their outputs differ functionally? We first test with linear probes and find that both encode nearly identical task-relevant information (AUC gap only 0.025)---information difference cannot explain an order-of-magnitude importance gap. We therefore examine whether the two layers apply different transformations to their inputs (representational structure).
+\textbf{Experiment~2 (What is the functional difference?)} Experiment~1 confirms that Conv\_1 is far more important than Conv\_0 ($\Delta$F1 ratio $\approx 30\times$). So how do their outputs differ functionally? We first test with linear probes and find that both encode nearly identical task-relevant information (AUC gap only 0.025)---information difference cannot explain an order-of-magnitude importance gap. We therefore examine whether the two layers apply different transformations to their inputs via representational structure metrics and spatial coherence analysis.
 
-\textbf{Experiment~3 (How does the model fail?)} Experiment~2 characterises the output differences. What happens inside the model when Conv\_1 is removed? Since Self-Attention is Conv\_1's direct downstream consumer, we capture attention weights and observe how attention patterns change under Conv\_1 removal.
-
-\FieldLabel{9.2.1 Methodological note: eval-time ablation}
-
-All ablations are performed at eval-time (zeroing out component outputs without retraining). Ideally, retraining after ablation would control for compensatory adaptation, but each retraining run requires a full GPU training cycle, infeasible under Colab quota constraints. Since the core objective is to determine the \textbf{relative importance ordering} among components (rather than precise absolute differences), eval-time ablation is sufficient for qualitative conclusions. The QANet paper's retrain-based ablation (Yu et al., 2018) also ranks convolution above Self-Attention, consistent with our ordering.
-
-Under residual architectures, zero-out ablation is the cleanest intervention. Mean or noise replacement injects actively incorrect signals that propagate forward and confound interpretation, whereas zero-out asks the narrower question: what remains once the model is denied this component's contribution?
+\textbf{Experiment~3 (How does the model fail?)} Experiment~2 characterises the output differences. What happens inside the model when Conv\_1 is removed? Since Self-Attention is Conv\_1's direct downstream consumer, we capture attention weights and measure how attention distributions (JS divergence, entropy, answer focus) change under Conv\_1 removal.
 
 \ReportSubsection{9.3 Experiment 1: Establishing the gap}
 
-\FieldLabel{9.3.1 Global ablation}
+\FieldLabel{9.3.1 Methodological note: eval-time ablation}
 
-Zero out all 21 instances of a component type (eval-time, full dev set, 10{,}465 samples). Zero-out = sub-layer output replaced with zeros before residual addition.
+All ablations are performed at eval-time (zeroing out component outputs without retraining), following the occlusion-based methodology introduced by Zeiler \& Fergus~\cite{zeiler2014visualizing} and formalised by Meyes et al.~\cite{meyes2019ablation}. The core objective is to determine the \textbf{relative importance ordering} among components; eval-time ablation is sufficient for this qualitative ranking.\footnote{Retraining after ablation would control for compensatory adaptation but is infeasible under Colab quota constraints. Zero-out is preferred over mean or noise replacement under residual architectures: the latter inject actively incorrect signals that propagate forward and confound interpretation, whereas zero-out asks the narrower question of what remains once the model is denied a component's contribution.} As a cross-check, we conducted separate retraining experiments removing all convolutions or all self-attention layers; the qualitative ordering \textbf{conv\,$>$\,attention} held across our eval-time ablation ($9.0\times$), our retrain ablation ($2.8\times$), and the original paper ($2.1\times$).\footnote{Retrain results: $-$conv F1\,=\,59.51 ($\Delta$\,=\,$-10.73$); $-$attn F1\,=\,66.39 ($\Delta$\,=\,$-3.85$). The eval-time ratio is larger because distribution mismatch disproportionately amplifies the dominant component's removal. An additional experiment replacing depthwise separable with standard convolution (retrained, F1\,=\,67.54, $\Delta$\,=\,$-2.70$) confirms the separable factorisation contributes but is not the primary driver. These retraining experiments were conducted as standalone verification runs and are not included in the main experimental pipeline of this report.}
+
+\FieldLabel{9.3.2 Global ablation}
+
+Zero out all $3 \times 7 = 21$ instances of a component type (eval-time, full dev set). Zero-out = sub-layer output replaced with zeros before residual addition.\footnote{$\Delta$F1 values are computed from full-precision scores before rounding; minor discrepancies with the rounded F1 column are due to independent rounding.}
 
 \small
 \begin{center}
@@ -2600,19 +2866,21 @@ $-$Conv (both) & 27.14 & $-43.11$ & 13.60\\
 \end{center}
 \normalsize
 
-\textbf{Finding~1}: Conv\_1 is the most important component; Conv\_0 is the least. The $\Delta$F1 ratio between architecturally identical layers is $32.54 / 1.09 \approx$ \textbf{30$\times$} (see note on ratio sensitivity in Section~9.1).
+The table reveals a stark asymmetry: Conv\_1 removal causes the largest drop among all four component types ($-32.54$~F1), whereas Conv\_0 removal causes the smallest ($-1.09$~F1)---a ratio of $\approx 30\times$ between architecturally identical layers (see note on ratio sensitivity in Section~9.1).
 
-\textbf{Finding~2}: Joint removal ($-43.11$) exceeds the sum of individuals ($-33.63$) by 9.48~F1---a super-additive interaction. Conv\_0 contributes non-redundant preprocessing that only becomes critical when Conv\_1 is also absent.
+Moreover, joint removal of both convolutions ($-43.11$) exceeds the sum of their individual effects ($-33.63$) by 9.48~F1---a super-additive interaction. Conv\_0's individual deficit is small ($-1.09$), yet its absence materially worsens the outcome when Conv\_1 is also removed, suggesting the two layers play complementary rather than redundant roles. Experiment~2 examines how the two layers' outputs differ functionally.
 
-\FieldLabel{9.3.2 Per-block ablation}
+\FieldLabel{9.3.3 Per-block ablation}
 
-Remove conv (both) or self\_attn in one (pass, block) at a time: $3 \text{ passes} \times 7 \text{ blocks} \times 2 \text{ component types} = 42$ configs, full dev set (10{,}465 samples).
+To test whether importance is concentrated in specific blocks or distributed across the encoder, we zero out conv (Conv\_0 and Conv\_1 jointly) or self-attention at a single (pass, block) location at a time, yielding $3 \text{ passes} \times 7 \text{ blocks} \times 2 \text{ component groups} = 42$ configurations, each evaluated on the full dev set.
 
-\textbf{Finding~3}: Max single-block impact = $-1.23$~F1 (p0\_b0\_conv); collective removal = $-43.11$. A 35$\times$ gap reveals \textbf{distributed redundancy}: no single block is essential, but together they are indispensable.
+The largest single-block drop is only $-1.23$~F1 (pass~0, block~0, conv), whereas collective removal causes $-43.11$~F1---a $35\times$ gap. No individual block is essential, yet the ensemble is indispensable: importance is distributed redundantly across blocks.
 
-\textbf{Finding~4}: Early passes matter more. Averaging per-block $\Delta$F1 across all component types within each pass: $M_1$ ($-0.16$ avg) $\gg$ $M_2$ ($-0.06$) $\gg$ $M_3$ ($+0.01$).
+Averaging per-block $\Delta$F1 within each pass reveals a gradient: $M_1$\,=\,$-0.16$, $M_2$\,=\,$-0.06$, $M_3$\,=\,$+0.01$---earlier passes carry more marginal importance, consistent with foundational representations being established early and later passes performing incremental refinement.
 
-\FieldLabel{9.3.3 Causal tracing (Meng et al., 2022)}
+\FieldLabel{9.3.4 Causal tracing (Meng et al.~\cite{meng2022locating})}
+
+Meng et al.\ developed causal tracing to localise factual associations in GPT via a corruption--restoration protocol. We adapt this protocol to QANet's encoder to identify which sub-layers carry the causal information for answer prediction.
 
 Per sample: (1)~clean run $\to$ collect all 84 sub-layer activations ($3 \text{ passes} \times 7 \text{ blocks} \times 4 \text{ components}$); (2)~corrupt context embeddings (Gaussian, $\sigma = 3 \times \text{std}$); (3)~restore ONE sub-layer's clean activation into the corrupted run $\to$ measure recovery. The Average Indirect Effect (AIE) for each sub-layer $i$ is:
 \[
@@ -2636,22 +2904,22 @@ FFN & 0.0012 & 0.0246 & 5.7\%\\
 \end{center}
 \normalsize
 
-\textbf{Finding~5}: Causal tracing independently confirms the gap---Conv\_1 accounts for 71.3\% of total AIE. Conv\_0 ranks second (15.3\%), above Attn and FFN, suggesting it does carry some causal weight even though ablation damage is minimal. This asymmetry (small ablation damage, moderate causal recovery) is consistent with Conv\_0 providing preprocessing that is useful but compensable via residual connections.
+Causal tracing independently confirms the importance gap: Conv\_1 accounts for 71.3\% of total AIE. Conv\_0 ranks second (15.3\%), above Attn and FFN, indicating it does carry causal weight even though ablation damage is minimal. This asymmetry---small ablation damage yet moderate causal recovery---is consistent with Conv\_0 providing a contribution that, while useful, is compensable via the residual pathway.
 
 \begin{center}
 \SafeIncludeGraphics[width=0.92\linewidth]{prism-uploads/h1_fig1_causal_tracing_heatmap.png}\\[0.3em]
-{\small\textbf{Figure 9.1.} Causal tracing heatmap: AIE per sub-layer across 3 passes $\times$ 7 blocks. Conv\_1 (top-right) dominates all other panels under a shared colour scale. Early passes contribute more AIE than later passes, consistent with Finding~4.}
+{\small\textbf{Figure 9.1.} Causal tracing heatmap: AIE per sub-layer across 3 passes $\times$ 7 blocks. Conv\_1 (top-right) dominates all other panels under a shared colour scale. Early passes contribute more AIE than later passes, consistent with the early-pass dominance observed in per-block ablation.}
 \end{center}
 
-\FieldLabel{9.3.4 Confound check: output magnitude}
+\FieldLabel{9.3.5 Confound check: output magnitude}
 
 Sub-layer L2 norms: Conv\_1 (250) $>$ Conv\_0 (113) $>$ FFN (104) $>$ Attn (82). Pearson $r(\text{norm}, \text{AIE}) = 0.893$.
 
-Could the gap simply reflect Conv\_1 having larger outputs? If magnitude were the driver, the norm ordering Conv\_0 (113) $>$ FFN (104) $>$ Attn (82) should predict ablation ordering Conv\_0 $>$ FFN $>$ Attn. The actual ablation ordering is exactly reversed: Attn ($-4.81$) $>$ FFN ($-3.32$) $>$ Conv\_0 ($-1.09$)---\textbf{inversely} correlated. This rules out output magnitude as the driver for these three components. Conv\_1's dominance direction is robust regardless of magnitude; the precise ratio over Attn (2--7$\times$) carries uncertainty from norm co-correlation.
+Could the gap simply reflect Conv\_1 having larger outputs? If magnitude were the driver, the norm ordering Conv\_0 (113) $>$ FFN (104) $>$ Attn (82) should predict ablation ordering Conv\_0 $>$ FFN $>$ Attn. The actual ablation ordering is exactly reversed: Attn ($-4.81$) $>$ FFN ($-3.32$) $>$ Conv\_0 ($-1.09$)---\textbf{inversely} correlated. This rules out output magnitude as the driver for these three components. Conv\_1's dominance direction is robust regardless of magnitude; however, because Conv\_1 also has the largest norm, the precise magnitude of its advantage over other components carries uncertainty from norm co-correlation.
 
-\FieldLabel{9.3.5 Experiment 1 summary}
+\FieldLabel{9.3.6 Experiment 1 summary}
 
-The order-of-magnitude importance gap between identical architectures is real and reproducible across two independent methods. It cannot be explained by output magnitude alone. Something about what Conv\_1 \emph{learns to do} is fundamentally different from Conv\_0.
+The order-of-magnitude importance gap between identical architectures is real and reproducible across two independent methods. It cannot be explained by output magnitude alone. What Conv\_1 \emph{learns to do} must differ qualitatively from Conv\_0.
 
 \begin{center}
 \SafeIncludeGraphics[width=0.72\linewidth]{prism-uploads/h1_fig2_dual_method.png}\\[0.3em]
@@ -2660,11 +2928,9 @@ The order-of-magnitude importance gap between identical architectures is real an
 
 \ReportSubsection{9.4 Experiment 2: Functional differences between Conv\_1 and Conv\_0}
 
-\textbf{Question}: Conv\_1 is far more important than Conv\_0 ($\Delta$F1 ratio $\approx 30\times$). How do their outputs differ functionally?
-
 \FieldLabel{9.4.1 Information content (linear probe)}
 
-Linear probing is a standard technique in representation analysis (Alain \& Bengio, 2017; Belinkov et al., 2017). We train logistic regression on per-token sub-layer outputs \textbf{before residual addition}---i.e., the sub-layer's own transformation, isolated from the skip-connection input. This is a deliberate choice: probing the post-residual stream would mix the sub-layer's contribution with accumulated upstream information, making all components appear similar regardless of their actual transformation. Label: inside answer span. 500 samples, 80/20 split, 5 (pass, block) positions.
+Linear probing is a standard technique in representation analysis, originally proposed by Alain \& Bengio~\cite{alain2016understanding} and extended to NLP by Belinkov et al.~\cite{belinkov2017neural}. A linear probe measures what information is \emph{linearly accessible} in a representation---precisely the kind of information a downstream linear layer (such as QANet's Pointer) can exploit. We train logistic regression on per-token sub-layer outputs \textbf{before residual addition}---i.e., the sub-layer's own transformation, isolated from the skip-connection input.\footnote{Probing the post-residual stream would mix the sub-layer's contribution with accumulated upstream information, making all components appear similar regardless of their actual transformation.} Label: inside answer span. 500 samples, 80/20 split, 5 (pass, block) positions.
 
 \small
 \begin{center}
@@ -2682,13 +2948,13 @@ Conv\_0 & 0.876\\
 \end{center}
 \normalsize
 
-\textbf{Finding~6}: On the answer-position property we tested, all components encode similar information \emph{even in their isolated transformations} (before residual addition). The Conv\_1 vs Conv\_0 gap is only 0.025~AUC, negligible compared to their order-of-magnitude ablation gap. Since we probed pre-residual outputs, this similarity cannot be attributed to the skip-connection carrying accumulated information---it reflects the sub-layers' own transformations encoding comparable answer-position signal.
+On the answer-position property tested, all components encode similar information even in their isolated pre-residual transformations. The Conv\_1 vs Conv\_0 gap is only 0.025~AUC, negligible compared to their order-of-magnitude ablation gap.
 
-\textbf{Limitation}: We only probed one property (answer position). Conv\_1 may encode critical information that Conv\_0 does not on other task-relevant properties (e.g., syntactic boundaries, entity types)---these remain untested. The ``similar information content'' conclusion is strictly limited to the tested property---\textbf{the gap's root cause may partly lie in untested information differences, partly in representational structure}. Additionally, linear probes can only capture linearly separable features; non-linearly encoded differences may be missed.
+\textbf{Limitation}: We only probed one property (answer position); Conv\_1 and Conv\_0 may differ on untested properties (e.g., syntactic boundaries, entity types), so the ``similar information content'' conclusion is strictly limited to this property---\textbf{the gap's root cause may partly lie in untested information differences, partly in representational structure}. Additionally, linear probes capture only linearly separable features.
 
 \FieldLabel{9.4.2 Representational structure (discriminativity)}
 
-Compare Conv\_1 vs Conv\_0 output properties directly. 200 samples, 5 (pass, block) positions. Metrics: local contrast ($1 - \text{lag-1 cosine similarity}$), token norm variance (CoV), effective rank ($\exp$ of singular value entropy).
+Since linear probes show Conv\_0 and Conv\_1 encode similar information, we turn to \emph{how} that information is structured. Ethayarajh~\cite{ethayarajh2019contextual} showed that geometric properties such as anisotropy and self-similarity vary substantially across layers of BERT, ELMo, and GPT-2, motivating representational structure as a complementary lens to information content. We compare Conv\_1 vs Conv\_0 output properties directly. 200 samples, 5 (pass, block) positions. Metrics: local contrast ($1 - \text{lag-1 cosine similarity}$); token norm variance and its coefficient of variation (Norm CoV); and effective rank ($\exp$ of singular value entropy, Roy \& Vetterli~\cite{roy2007effective}).
 
 \small
 \begin{center}
@@ -2706,11 +2972,11 @@ Effective Rank & 32.5 & 43.2 & \textbf{1.3$\times$} & 8.6 & 26.5\\
 \end{center}
 \normalsize
 
-\textbf{Finding~7}: Conv\_1 is significantly higher than Conv\_0 on two dimensions: token-level amplitude variation (Norm Variance 3.2$\times$) and output subspace dimensionality (Effective Rank 1.3$\times$). However, in directional distinctiveness (Local Contrast) and normalised variation (Norm CoV), Conv\_0 is actually slightly higher. Conv\_1's transformation is primarily characterised by \textbf{amplitude modulation and dimensional utilisation}, rather than directional separation of adjacent tokens. Conv\_0's outputs, while more directionally diverse, have minimal overall impact (ablation only $-1.09$~F1), suggesting this directional diversity does not critically contribute to downstream computation.
+Conv\_1 exceeds Conv\_0 on two dimensions: token-level amplitude variation (Norm Variance 3.2$\times$) and output subspace dimensionality (Effective Rank 1.3$\times$). However, in directional distinctiveness (Local Contrast) and normalised variation (Norm CoV), Conv\_0 is actually slightly higher. Conv\_1's transformation is thus primarily characterised by \textbf{amplitude modulation and subspace dimensionality}, rather than directional separation of adjacent tokens. Conv\_0's outputs, while more directionally distinctive, have minimal overall impact (ablation only $-1.09$~F1), ruling out directional distinctiveness as a sufficient condition for importance.
 
 \FieldLabel{9.4.3 Spatial structure (local coherence)}
 
-Mean cosine similarity between output vectors at positions $t$ and $t+k$, at p0\_b0, 500 samples.
+Representational structure metrics characterise each sub-layer's output in isolation; we complement them with a spatial lens. Ethayarajh~\cite{ethayarajh2019contextual} measured self-similarity \emph{across layers}; here we apply the same cosine-similarity tool \emph{across token positions} to capture how each sub-layer's output varies with positional distance. Mean cosine similarity between output vectors at positions $t$ and $t+k$, measured at pass~0, block~0; 500 samples.
 
 \small
 \begin{center}
@@ -2728,19 +2994,17 @@ FFN & 0.595 & 0.564 & 0.562 & 0.556 & 0.039\\
 \end{center}
 \normalsize
 
-\textbf{Finding~8}: Conv\_0's decay (0.109) is nearly double Conv\_1's (0.058), indicating Conv\_0's output has stronger locality. Conv\_1's flatter decay means its output is more spatially uniform. Self-Attention has the highest overall similarity (0.84) with near-zero decay (0.037), consistent with its global mixing role.
+Conv\_0's decay (0.109) is nearly double Conv\_1's (0.058), indicating Conv\_0's output has stronger locality. Conv\_1's flatter decay means its output is more spatially uniform.\footnote{Conv\_1's intermediate lags (lag=3, 5) are slightly higher than lag=2, producing a non-monotonic profile. The endpoint decay (lag~1$\to$5) nonetheless captures the overall trend; more positions and samples would be needed to determine whether the non-monotonicity reflects a genuine spatial pattern or sampling variability at a single (pass, block) location.} Self-Attention has the highest overall similarity (0.84) with near-zero decay (0.037), consistent with its global mixing role.
 
 \FieldLabel{9.4.4 Experiment 2 summary}
 
 The functional difference between Conv\_1 and Conv\_0---at least on the answer-position property---is not in information content (AUC gap only 0.025) but in \textbf{specific dimensions of representational structure}. Conv\_1's output has significantly higher token-level amplitude variation (Norm Variance 3.2$\times$) and subspace dimensionality (Effective Rank 1.3$\times$), with more spatially uniform structure (decay 0.058 vs 0.109).
 
-The divergence across metrics has diagnostic value. Conv\_0 scores slightly higher on directional distinctiveness yet is nearly dispensable ($-1.09$~F1)---ruling out directional distinctiveness as a sufficient condition. The two dimensions where Conv\_1 holds a clear advantage---amplitude modulation and subspace dimensionality---are candidate mechanisms. This is consistent with dot-product attention mechanics: $QK^{\!\top}$ scores are sensitive to input magnitude differences, and higher-dimensional inputs allow $Q$, $K$ projections to carry richer discriminative signals. Notably, FFN provides a natural control: its Norm Variance (14.79) is nearly identical to Conv\_1's (14.48), so if Norm Variance alone were sufficient for importance, FFN should match Conv\_1 in ablation impact. It does not ($-3.32$ vs $-32.54$~F1), precisely because FFN sits \emph{downstream} of Self-Attention---its output properties cannot shape $QK^{\!\top}$ scores. This confirms that amplitude modulation's causal impact depends critically on pipeline position: the same output property matters when it feeds into attention, and is irrelevant when it does not.
+The divergence across metrics has diagnostic value. Conv\_0 scores slightly higher on directional distinctiveness yet is nearly dispensable ($-1.09$~F1)---ruling out directional distinctiveness as a sufficient condition. The two dimensions where Conv\_1 holds a clear advantage---amplitude modulation and subspace dimensionality---are candidate mechanisms. This is consistent with the scaled dot-product attention mechanism (Vaswani et al.~\cite{vaswani2017attention}): $QK^{\!\top}$ scores are sensitive to input magnitude differences, and higher-dimensional inputs allow $Q$, $K$ projections to carry richer discriminative signals. Notably, FFN provides a natural control: its Norm Variance (14.79) is nearly identical to Conv\_1's (14.48), so if Norm Variance alone were sufficient for importance, FFN should match Conv\_1 in ablation impact. It does not ($-3.32$ vs $-32.54$~F1), precisely because FFN sits \emph{downstream} of Self-Attention---its output properties cannot shape $QK^{\!\top}$ scores. This confirms that amplitude modulation's causal impact depends critically on pipeline position: the same output property matters most when it directly feeds into attention, and contributes far less when it does not.
 
 \ReportSubsection{9.5 Experiment 3: How does the model fail without Conv\_1?}
 
-\textbf{Question}: Removing Conv\_1 causes a $-32.54$~F1 collapse. What happens inside the model?
-
-Self-Attention is Conv\_1's direct downstream consumer. We use forward hooks to capture attention weights under three conditions (50 samples; sufficient because the per-block JSD ratio is tightly concentrated at 6.9--10.4$\times$ across all 7 blocks, indicating low variance): clean, $-$Conv\_1, $-$Conv\_0 (control).
+Self-Attention is Conv\_1's direct downstream consumer. Clark et al.~\cite{clark2019bert} showed that JS divergence (Lin~\cite{lin1991divergence}) and attention entropy are effective lenses for characterising how transformer attention heads behave---distinguishing broad-attending from focused heads and quantifying distributional shifts. We adopt the same metrics to measure how attention distributions change under ablation. We use forward hooks to capture attention weights under three conditions (50 samples; sufficient because the per-block JSD ratio is tightly concentrated at 7.0--10.3$\times$ across all 7 blocks, indicating low variance): clean, $-$Conv\_1, $-$Conv\_0 (control).
 
 \FieldLabel{9.5.1 JS divergence (clean vs ablated)}
 
@@ -2764,7 +3028,7 @@ Self-Attention is Conv\_1's direct downstream consumer. We use forward hooks to 
 \end{center}
 \normalsize
 
-\textbf{Finding~9}: Attention distortion under Conv\_1 removal is \textbf{8.2$\times$ greater} than under Conv\_0 removal. The ratio is consistent across all 7 blocks (6.9--10.4$\times$).
+Attention distortion under Conv\_1 removal is \textbf{8.2$\times$ greater} than under Conv\_0 removal, and this ratio is consistent across all 7 blocks (7.0--10.3$\times$).
 
 \begin{center}
 \SafeIncludeGraphics[width=0.76\linewidth]{prism-uploads/h1_fig3_attention_jsd.png}\\[0.3em]
@@ -2788,7 +3052,7 @@ $-$Conv\_0 & 4.554 & $-0.067$ & 0.0489 & $+6\%$\\
 \end{center}
 \normalsize
 
-\textbf{Finding~10}: Without Conv\_1, attention does not diffuse---it \textbf{collapses} into over-concentrated patterns on wrong positions (entropy \emph{decreases}, answer mass drops 19\%). The model does not lose track of information; instead, attention becomes erroneously focused on non-answer positions.
+Without Conv\_1, attention does not diffuse---it \textbf{collapses} into over-concentrated patterns on wrong positions (entropy \emph{decreases}, answer mass---the fraction of total attention weight falling on ground-truth answer tokens---drops 19\%). The model does not lose track of information; instead, attention becomes erroneously focused on non-answer positions.
 
 \FieldLabel{9.5.3 On pipeline distance}
 
@@ -2811,7 +3075,7 @@ Global ablation (Exp~1a) & Conv\_1 $-32.54$~F1, Conv\_0 $-1.09$~F1; joint remova
 Per-block ablation (Exp~1b) & No single block dominates; early passes matter more. & Indicates distributed redundancy, not one brittle bottleneck.\\
 Causal tracing (Exp~1c) & Conv\_1 accounts for 71.3\% of total AIE. & Confirms the ordering with a restoration-based method.\\
 Linear probes (Exp~2a) & AUC gap only 0.025 on answer-position property. & Rules out information difference on this property as the primary explanation; other properties may still differ.\\
-Representational analysis (Exp~2b/c) & Conv\_1: Norm Variance 3.2$\times$, Effective Rank 1.3$\times$, flatter spatial decay. & Points to the real mechanism: amplitude modulation and subspace utilisation.\\
+Representational analysis (Exp~2b/c) & Conv\_1: Norm Variance 3.2$\times$, Effective Rank 1.3$\times$, flatter spatial decay. & Identifies candidate mechanisms: amplitude modulation and subspace dimensionality.\\
 Downstream attention (Exp~3) & JSD 8.2$\times$; entropy $-0.259$; answer mass $-19\%$. & Identifies the proximate failure mode: attention collapses onto wrong positions.\\
 \bottomrule
 \end{tabularx}
@@ -2823,12 +3087,13 @@ Three limitations should be kept explicit. First, \textbf{position and learned f
 %% ====================================================================
 %%  SECTION 10 — H2
 %% ====================================================================
+\clearpage
 
 \ReportSection{10 Hypothesis 2: Directional Asymmetry in CQ Attention --- Cross-Architecture Validation from BiDAF to QANet}
 
 \ReportSubsection{10.1 Motivation and research question}
 
-QANet inherits its bidirectional CQ Attention design from BiDAF (Seo et al., 2017). This layer fuses the independently encoded Context and Question streams into a single representation. The output is a concatenation of four sub-components:
+QANet (Yu et al.~\cite{yu2018qanet}) inherits its bidirectional CQ Attention design from BiDAF (Seo et al.~\cite{seo2017bidaf}). This layer fuses the independently encoded Context and Question streams into a single representation. The output is a concatenation of four sub-components:
 
 \begin{tcolorbox}[enhanced,breakable,colback=CodeBg,colframe=CodeFrame,boxrule=0.5pt,arc=1.5mm,left=2.6mm,right=2.6mm,top=2.0mm,bottom=1.8mm]
 \ttfamily
@@ -2839,11 +3104,11 @@ Output = [C;\; A;\; C$\odot$A;\; C$\odot$B] \quad--- total 4$d$ dimensions\\[0.3
 
 where $A = S_1 Q$ (C$\to$Q direction), $C \odot B$ derives from $B = S_1 S_2^{\!\top} C$ (Q$\to$C direction), $S_1$ is softmax over the Q dimension, and $S_2$ is softmax over the C dimension. Both directions share the same similarity matrix $S$ and trainable weight $w$; they differ only in the softmax normalisation direction.
 
-BiDAF (Seo et al., 2017, Table~1b) measured the relative importance of the two directions via \emph{training-time} ablation (removing a component and retraining the model):
+Seo et al.~\cite{seo2017bidaf} (Table~1b) measured the relative importance of the two directions via \emph{training-time} ablation (removing a component and retraining the model):
 
 \small
 \begin{center}
-{\bfseries Table 10.1. BiDAF direction-level ablation (Seo et al., 2017)}\\[0.25em]
+{\bfseries Table 10.1. BiDAF direction-level ablation (Seo et al.~\cite{seo2017bidaf})}\\[0.25em]
 \begin{tabularx}{0.70\linewidth}{>{\raggedright\arraybackslash}p{0.35\linewidth}>{\centering\arraybackslash}p{0.15\linewidth}>{\centering\arraybackslash}X}
 \toprule
 \textbf{Condition} & \textbf{F1} & \textbf{$\Delta$F1}\\
@@ -2870,7 +3135,7 @@ Furthermore, BiDAF's ablation granularity was direction-level (C2Q vs Q2C), with
 
 BiDAF's ablation experiments used \textbf{training-time ablation}---removing a component and retraining the entire model. This answers an architectural design question: \emph{Is this component architecturally replaceable?}
 
-We choose \textbf{eval-time ablation}---zeroing sub-component outputs directly on a fully trained model. This is a deliberate methodological choice, not a fallback due to resource constraints. Our research goal is \textbf{mechanistic analysis}---understanding the functional roles that components \emph{currently serve} in the trained model---not architecture search. This aligns with the causal tracing methodology of Meng et al.\ (2022) for localising factual associations in GPT: intervening on a trained model (corruption + restoration) to localise functional roles. Training-time ablation allows the model to learn compensatory strategies during retraining, erasing the functional traces of the removed component---making it \emph{unsuitable} for mechanistic analysis.
+We choose \textbf{eval-time ablation}---zeroing sub-component outputs directly on a fully trained model (following the occlusion-based protocol described in Section~9.3.1). This is a deliberate methodological choice, not a fallback due to resource constraints. Our research goal is \textbf{mechanistic analysis}---understanding the functional roles that components \emph{currently serve} in the trained model---not architecture search. This aligns with the causal tracing methodology of Meng et al.~\cite{meng2022locating} for localising factual associations in GPT: intervening on a trained model (corruption + restoration) to localise functional roles. Training-time ablation allows the model to learn compensatory strategies during retraining, erasing the functional traces of the removed component---making it \emph{unsuitable} for mechanistic analysis.
 
 \FieldLabel{10.2.1 How the comparison with BiDAF holds}
 
@@ -2943,7 +3208,7 @@ C2Q / Q2C ratio & 2.7$\times$ & \textbf{61.0$\times$}\\
 
 \FieldLabel{10.4.3 cq\_resizer weight analysis}
 
-\texttt{cq\_resizer} is \texttt{Conv1d(4d, d, kernel\_size=1)}, with weight $W$ of shape $[d, 4d]$. We partition $W$ by columns into four $[d, d]$ quadrants and compute each quadrant's Frobenius norm. Ablation measures \emph{performance loss} from removing a component (output side); weight norm measures the model's \emph{learned dependency} (parameter side). If ablation ranking and weight norm ranking agree, conclusion credibility is significantly strengthened.
+\texttt{cq\_resizer} is \texttt{Conv1d(4d, d, kernel\_size=1)}, with weight $W$ of shape $[d, 4d]$. We partition $W$ by columns into four $[d, d]$ quadrants and compute each quadrant's Frobenius norm as a proxy for learned dependency, following the magnitude-based importance framework of Li et al.~\cite{li2017pruning} and Han et al.~\cite{han2015learning}. Ablation measures \emph{performance loss} from removing a component (output side); weight norm measures the model's \emph{learned dependency} (parameter side). If ablation ranking and weight norm ranking agree, conclusion credibility is significantly strengthened.
 
 \small
 \begin{center}
@@ -2963,26 +3228,24 @@ $W_{[:,3d:4d]}$ & $C \odot B$ (Q$\to$C) & 11.78 & 42.3\%\\
 
 \FieldLabel{10.4.4 Experiment 1 summary}
 
-\textbf{Finding 1 (Sub-component ranking).} The causal importance ranking is $C \odot A$ ($-15.83$) $\gg$ $C$ ($-8.51$) $>$ $A$ ($-4.04$) $\gg$ $C \odot B$ ($-1.03$). The gated term $C \odot A$ is the single most important sub-component; the Q2C direction ($C \odot B$) is nearly negligible.
+The causal importance ranking is $C \odot A$ ($-15.83$) $\gg$ $C$ ($-8.51$) $>$ $A$ ($-4.04$) $\gg$ $C \odot B$ ($-1.03$). The gated term $C \odot A$ is the single most important sub-component; the Q2C direction ($C \odot B$) is nearly negligible.
 
-\textbf{Finding 2 (Cross-architecture comparison).} QANet's direction-level C2Q/Q2C ratio is \textbf{61.0$\times$} (BiDAF: 2.7$\times$). This headline ratio involves unequal intervention scales (C2Q zeros 2/4 dimensions, Q2C zeros 1/4); the controlled single-component ratio is 15.4$\times$ (see Intervention size control below). Both ratios confirm that the asymmetry not only \emph{persists} after the architecture change but \emph{dramatically intensifies}. Removing C2Q drops F1 to 7.46 (approaching 7.11 from full-layer removal); Q2C ($C \odot B$) contributes only $-1.03$ F1, nearly redundant in QANet.
+At the direction level, QANet's C2Q/Q2C ratio is \textbf{61.0$\times$} (BiDAF: 2.7$\times$). This headline ratio involves unequal intervention scales (C2Q zeros 2/4 dimensions, Q2C zeros 1/4); the controlled single-component ratio is 15.4$\times$ (see Intervention size control below). Both ratios confirm that the asymmetry not only \emph{persists} after the architecture change but \emph{dramatically intensifies}. Removing C2Q drops F1 to 7.46 (approaching 7.11 from full-layer removal); Q2C ($C \odot B$) contributes only $-1.03$ F1, nearly redundant in QANet.
 
 \begin{center}
 \SafeIncludeGraphics[width=0.88\linewidth]{prism-uploads/h2_fig1_cross_arch.png}\\[0.3em]
 {\small\textbf{Figure 10.1.} Cross-architecture comparison. Left: absolute $\Delta$F1 by direction. Right: C2Q/Q2C ratio jumps from 2.7$\times$ (BiDAF) to 61$\times$ (QANet)---a 23$\times$ amplification. The asymmetry is not an artefact of LSTM capacity; it is an inherent property of the fusion mechanism that \emph{intensifies} with stronger downstream encoding.}
 \end{center}
 
-\textbf{Finding 3 (Weight validation).} $A$ (C$\to$Q main term) has the highest Frobenius norm (18.44), significantly above the other three quadrants (11.78--12.42), \textbf{supporting} C2Q dominance from the parameter side. However, $C \odot A$ and $C \odot B$ have similar norms (11.90 vs 11.78), failing to predict their $15\times$ ablation difference. Weight norms agree with ablation at the direction level ($A$ largest $\to$ C2Q dominant), but at sub-component level, input signal quality equally determines causal effect.
+From the parameter side, $A$ (C$\to$Q main term) has the highest Frobenius norm (18.44), significantly above the other three quadrants (11.78--12.42), \textbf{supporting} C2Q dominance. However, $C \odot A$ and $C \odot B$ have similar norms (11.90 vs 11.78), failing to predict their $15.4\times$ ablation difference. Weight norms agree with ablation at the direction level ($A$ largest $\to$ C2Q dominant), but at sub-component level, input signal quality equally determines causal effect.
 
-\textbf{Finding 4 ($C$ component role).} Raw context passthrough ($C$) is the second most important sub-component ($-8.51$ F1), indicating the model relies on both attention-processed signals and unmodified raw context.
+Notably, raw context passthrough ($C$) is the second most important sub-component ($-8.51$ F1), indicating the model relies on both attention-processed signals and unmodified raw context.
 
 \textbf{Intervention size control.} In the direction-level comparison, C2Q ablation zeros $2/4$ dimensions ($A$ + $C \odot A$) while Q2C zeros only $1/4$ dimension ($C \odot B$)---different intervention scales. To rule out this confound, we check single-component comparisons (each zeroing exactly $1/4$ of dimensions): $C \odot A$ ($-15.83$) vs $C \odot B$ ($-1.03$) = \textbf{15.4$\times$}, $A$ ($-4.04$) vs $C \odot B$ ($-1.03$) = \textbf{3.9$\times$}. Even with strictly controlled intervention size, every C2Q sub-component significantly outweighs Q2C. The asymmetry holds at any granularity.
 
 \ReportSubsection{10.5 Experiment 2: What mechanism maintains the asymmetry?}
 
-\textbf{Question}: C2Q is more important, but C2Q and Q2C share the same similarity matrix $S$, differing only in softmax direction. Why does merely changing the normalisation direction produce such a massive causal difference?
-
-Starting from the mathematical definitions, the two directions perform fundamentally different operations:
+Although the two directions share the same similarity matrix and differ only in softmax normalisation (Section~10.1), they perform fundamentally different operations:
 
 \begin{itemize}
 \item \textbf{C2Q ($A = S_1 Q$)}: \emph{Injects} Question embeddings into every Context position---introducing vector content that \textbf{did not previously exist} in Context.
@@ -2991,13 +3254,13 @@ Starting from the mathematical definitions, the two directions perform fundament
 
 If answer-relevant information in Context is spatially concentrated, then ``redistributing existing Context information'' has low value---useful information is already at the correct positions. Meanwhile, ``injecting Question information'' is irreplaceable---the Question signal has no other pathway into CQ Attention's output.
 
-We test the information concentration premise through selective corruption.
+We test the information concentration premise through selective corruption---injecting targeted noise into specific input positions to measure their causal contribution, following the intervention-based interpretability paradigm (Vig et al.~\cite{vig2020investigating}; Finlayson et al.~\cite{finlayson2021causal}).
 
 \FieldLabel{10.5.1 Method}
 
 Apply noise ($\sigma = 3 \times \text{std}$) only to specific Context positions, keeping others clean. 200 samples, 3 noise repeats per sample.
 
-Conditions: \textbf{ans\_only} corrupts only answer-span positions ($y_1$ to $y_2$); \textbf{non\_ans\_only} corrupts only non-answer, non-padding positions; \textbf{full\_context} corrupts all Context positions (baseline reference).
+Conditions: \textbf{ans\_only} corrupts only answer-span positions ($y_1$ to $y_2$); \textbf{non\_ans\_only} corrupts only non-answer, non-padding positions; \textbf{full\_context} corrupts all Context positions (baseline reference). The Total Effect (TE) is the drop in answer probability: $\text{TE} = P(\text{answer} \mid \text{clean}) - P(\text{answer} \mid \text{corrupted})$.
 
 \small
 \begin{center}
@@ -3041,7 +3304,7 @@ Corrupting answer-span tokens directly removes the target signal; high TE is exp
 
 \textbf{Direct answer to H2.} The directional asymmetry is not only cross-architecture robust, but \textbf{dramatically intensifies} in QANet---from BiDAF's 2.7$\times$ to \textbf{61.0$\times$}.
 
-Under QANet's Conv+Attention architecture, the joint causal effect of C2Q sub-components ($A$, $C \odot A$) is 61.0 times that of Q2C ($C \odot B$) at direction level (unequal intervention scale: C2Q zeros 2/4 dimensions, Q2C zeros 1/4). Under controlled single-component comparison (each zeroing exactly 1/4 of dimensions), the asymmetry remains stark: \textbf{$C \odot A$ vs $C \odot B$ = 15.4$\times$}, $A$ vs $C \odot B$ = 3.9$\times$. The 15.4$\times$ is the core ratio under comparable intervention scale. Removing C2Q drops F1 to 7.46; C2Q carries nearly all of CQ Attention's value. Q2C contributes only $-1.03$ F1, nearly redundant in QANet. \texttt{cq\_resizer} weight norms validate C2Q dominance at the direction level.
+Under controlled single-component comparison (each zeroing exactly $1/4$ of dimensions), the core ratio is \textbf{$C \odot A$ vs $C \odot B$ = 15.4$\times$} (Section~10.4.4). Removing all C2Q sub-components drops F1 to 7.46---nearly identical to full-layer removal (7.11)---while Q2C contributes only $-1.03$~F1. \texttt{cq\_resizer} weight norms independently validate C2Q dominance at the direction level.
 
 \textbf{Mechanism.} The asymmetry's root cause is that the two directions perform \textbf{fundamentally different operations}:
 
@@ -3076,12 +3339,13 @@ Three limitations should be kept explicit. First, $A$ and $C \odot A$ have algeb
 %% ====================================================================
 %%  SECTION 11 — H3
 %% ====================================================================
+\clearpage
 
 \ReportSection{11 Hypothesis 3: Necessity of Pointer Asymmetric Wiring --- Testing Functional Specialisation in Iterative Encoding}
 
 \ReportSubsection{11.1 Motivation and research question}
 
-QANet's Model Encoder applies the same 7 encoder blocks iteratively three times (weight-shared), producing three intermediate representations:
+QANet's (Yu et al.~\cite{yu2018qanet}) Model Encoder applies the same 7 encoder blocks iteratively three times (weight-shared), producing three intermediate representations:
 
 \begin{tcolorbox}[enhanced,breakable,colback=CodeBg,colframe=CodeFrame,boxrule=0.5pt,arc=1.5mm,left=2.6mm,right=2.6mm,top=2.0mm,bottom=1.8mm]
 \ttfamily
@@ -3100,7 +3364,7 @@ P(end)\hphantom{t} = softmax($w_2 \cdot [\text{M1};\, \text{M3}]$) \quad$\leftar
 
 \FieldLabel{11.1.1 Design provenance}
 
-The QANet paper merely states ``We adopt the strategy of Seo et al.\ (2016)'' for this design, providing no theoretical justification. Tracing back to BiDAF, the original form is: start prediction uses the modelling layer output $M$, while end prediction passes $M$ through an additional BiLSTM with \emph{independent} parameters to obtain $M_2$. In BiDAF, this asymmetry has at least structural justification---the extra BiLSTM with independent parameters can learn end-specific features. However, QANet adapted this pattern into \emph{weight-shared} encoder iterations: the third iteration applies the exact same transformation function as the first two, significantly weakening the premise that ``additional processing produces specialised information.'' This never-formally-tested design choice implies three assumptions:
+The QANet paper merely states ``We adopt the strategy of Seo et al.''~\cite{seo2017bidaf} for this design, providing no theoretical justification. Tracing back to BiDAF, the original form is: start prediction uses the modelling layer output $M$, while end prediction passes $M$ through an additional BiLSTM with \emph{independent} parameters to obtain $M_2$. In BiDAF, this asymmetry has at least structural justification---the extra BiLSTM with independent parameters can learn end-specific features. However, QANet adapted this pattern into \emph{weight-shared} encoder iterations: the third iteration applies the exact same transformation function as the first two, significantly weakening the premise that ``additional processing produces specialised information.'' This never-formally-tested design choice implies three assumptions:
 
 \begin{enumerate}
 \item \textbf{Depth specialisation}: $M_2$ (14 layers) and $M_3$ (21 layers) carry different information suited for different prediction tasks---$M_2$'s moderate depth suits start localisation, $M_3$'s additional processing provides specialised refinement for end prediction.
@@ -3114,13 +3378,13 @@ The QANet paper merely states ``We adopt the strategy of Seo et al.\ (2016)'' fo
 
 \ReportSubsection{11.2 Methodological note: eval-time intervention}
 
-All experiments in this study are performed at \textbf{eval time}---wiring replacement, ablation, and information probing are all executed on a fully trained model without retraining. Our research goal is \textbf{mechanistic analysis}---understanding the functional roles that components currently serve in the trained model. This aligns with the causal tracing methodology of Meng et al.\ (2022). Training-time ablation allows compensatory learning, erasing functional traces---making it unsuitable for mechanistic analysis.
+Following the eval-time intervention approach used throughout this study (Section~9.3.1), all H3 experiments are performed on a fully trained model without retraining.
 
-Wiring replacement is a form of eval-time intervention: the encoder is unchanged, only the Pointer's input combinations are modified. This directly measures ``how the model currently uses each iteration product.'' Since Pointer weights are trained on specific input distributions, replacement introduces distribution mismatch---this inherent limitation is mitigated in Experiment~2 through Pointer-weight-independent linear probes.
+Wiring replacement is a specific form of eval-time intervention: the encoder is unchanged, only the Pointer's input combinations are modified. This directly measures ``how the model currently uses each iteration product.'' Since Pointer weights are trained on specific input distributions, replacement introduces distribution mismatch---this inherent limitation is mitigated in Experiment~2 through Pointer-weight-independent linear probes.
 
 \ReportSubsection{11.3 Pre-validation: how large is the asymmetric design's advantage?}
 
-We directly test the necessity of the asymmetric design through wiring replacement. At eval time, we change the Pointer's input combinations (encoder unchanged), evaluating on the full dev set of 10{,}465 samples. The large sample size ensures that even small F1 differences (e.g., 0.23) are measured with high precision.
+We directly test the necessity of the asymmetric design through wiring replacement. At eval time, we change the Pointer's input combinations (encoder unchanged), evaluating on the full dev set. The sample size ensures that even small F1 differences (e.g., 0.23) are measured with high precision.
 
 \small
 \begin{center}
@@ -3142,22 +3406,18 @@ only\_M1 & M1+M1 & M1+M1 & 63.97 & $-6.28$ & Are M2/M3 necessary?\\
 
 Test results for the three design assumptions:
 
-\textbf{Assumption~1 (Depth specialisation)---barely holds}: The asymmetric design (original) outperforms the symmetric design (sym\_M2) by only \textbf{0.23~F1}. The supposed ``specialisation'' from assigning $M_3$ to end prediction provides near-negligible marginal benefit. More notably, $M_2$ doing both tasks (sym\_M2: $-0.23$) \emph{outperforms} $M_3$ doing both tasks (sym\_M3: $-0.54$)---the more processed product is actually worse.
+\textbf{Assumption~1 (Depth specialisation)---barely holds at the behavioural level}: The asymmetric design (original) outperforms the symmetric design (sym\_M2) by only \textbf{0.23~F1}. The supposed ``specialisation'' from assigning $M_3$ to end prediction provides near-negligible marginal benefit. More notably, $M_2$ doing both tasks (sym\_M2: $-0.23$) \emph{outperforms} $M_3$ doing both tasks (sym\_M3: $-0.54$)---the more processed product is actually worse.
 
 \textbf{Assumption~2 (Shared anchor)---near-redundant}: Removing $M_1$ (no\_M1: $-0.58$) barely affects performance, but $M_1$ alone (only\_M1: $-6.28$) is catastrophic. $M_1$ participates in both predictions yet contributes the least---the shared anchor provides negligible incremental value.
 
-\textbf{Assumption~3 (Iterative gain)---partially holds with diminishing returns}: $M_2$/$M_3$ are essential (only\_M1: $-6.28$), but $M_2$ already captures the vast majority of incremental value. The second iteration's increment (only\_M1 vs sym\_M2: 6.05~F1) far exceeds the third iteration's marginal contribution (near zero or negative).
+\textbf{Assumption~3 (Iterative gain)---partially holds with diminishing returns}: $M_2$/$M_3$ are essential (only\_M1: $-6.28$), but $M_2$ already captures the vast majority of incremental value. The second iteration's increment (only\_M1 vs sym\_M2: 6.04~F1) far exceeds the third iteration's marginal contribution (near zero or negative).
 
 \textbf{Note on swap.} swap ($-0.82$) is the largest drop among non-only\_M1 configs, but this does not indicate $M_2$/$M_3$ carry different information. swap causes \emph{both} $w_1$ and $w_2$ to receive out-of-distribution inputs simultaneously ($w_1$ trained on $[M_1; M_2]$ but receives $[M_1; M_3]$; $w_2$ vice versa), whereas sym\_M2 only mismatches $w_2$ ($-0.23$) and sym\_M3 only mismatches $w_1$ ($-0.54$). If the mismatch effects are independent, expected swap $\approx 0.23 + 0.54 = 0.77$, actual $0.82$---highly consistent. The swap loss comes from \textbf{dual distribution mismatch}, not $M_2$/$M_3$ information difference.
 
-\begin{center}
-\SafeIncludeGraphics[width=0.78\linewidth]{prism-uploads/h3_fig1_wiring_replacement.png}\\[0.3em]
-{\small\textbf{Figure 11.1.} Pointer wiring replacement results. The asymmetric design (original) outperforms the best symmetric alternative (sym\_M2) by only 0.23~F1---far smaller than the 6.28~F1 gap from removing $M_2$/$M_3$ entirely (only\_M1). The marginal value of asymmetric wiring is negligible.}
-\end{center}
 
 \ReportSubsection{11.4 Experiment design}
 
-Three experiments progressively explain the three design failures observed in pre-validation:
+Three experiments progressively investigate the three design weaknesses observed in pre-validation:
 
 \textbf{Experiment~1 (Why is the shared anchor redundant?)} Validate the cause of $M_1$ redundancy from parameter and information sides: (a)~Pointer weight $M_1$-quadrant norms---did the model learn to downweight $M_1$? (b)~$M_1$--$M_2$ CKA---has $M_2$ absorbed $M_1$'s information?
 
@@ -3185,11 +3445,11 @@ $w_2$ & 0.0728 & 0.1232 & 1.69$\times$\\
 \end{center}
 \normalsize
 
-The $M_2$/$M_3$ quadrant norms in $w_1$ and $w_2$ are \textbf{1.97$\times$} and \textbf{1.69$\times$} their $M_1$ counterparts respectively. \textbf{Caveat}: in linear models, weight norms are influenced by input feature magnitudes---if $M_1$ tokens have systematically larger average magnitude than $M_2$/$M_3$, smaller weights may reflect scale compensation rather than reduced dependence. The quadrant ratio should be interpreted as \emph{directional support} (consistent with behavioural evidence), not independent strong evidence.
+The $M_2$/$M_3$ quadrant norms in $w_1$ and $w_2$ are \textbf{1.97$\times$} and \textbf{1.69$\times$} their $M_1$ counterparts respectively. Following the magnitude-based importance reasoning of Li et al.~\cite{li2017pruning}, larger norms suggest greater learned dependency. \textbf{Caveat}: in linear models, weight norms are influenced by input feature magnitudes---if $M_1$ tokens have systematically larger average magnitude than $M_2$/$M_3$, smaller weights may reflect scale compensation rather than reduced dependence. The quadrant ratio should be interpreted as \emph{directional support} (consistent with behavioural evidence), not independent strong evidence.
 
 \FieldLabel{11.5.2 CKA information overlap}
 
-Compute linear CKA for $M_1$--$M_2$, $M_2$--$M_3$, $M_1$--$M_3$ (full dev set).
+To measure how much representational structure is shared between iteration products, we use CKA (Centered Kernel Alignment; Kornblith et al.~\cite{kornblith2019similarity}). CKA was specifically designed to compare neural network representations across layers or models---it is invariant to orthogonal transformations and isotropic scaling, making it robust to the kind of representational format changes that occur across shared-weight iterations. We compute linear CKA for $M_1$--$M_2$, $M_2$--$M_3$, $M_1$--$M_3$ (full dev set).
 
 \small
 \begin{center}
@@ -3225,7 +3485,7 @@ The shared anchor design exists but provides negligible incremental value---this
 
 \textbf{Goal}: Directly measure $M_2$ vs $M_3$ boundary information difference, independent of Pointer weights. This tests the core assumption of the asymmetric design---whether different-depth iteration products carry different information.
 
-\textbf{Method}: Train logistic regression on $M_1$/$M_2$/$M_3$'s per-token representations for \texttt{is\_start\_token} and \texttt{is\_end\_token}. 500 samples, 80/20 split, ROC-AUC. The Pointer itself is a linear projection ($w \cdot [M;\, M']$), so linear probes test the \emph{same type} of information readability.
+\textbf{Method}: Following the linear probing approach (Alain \& Bengio~\cite{alain2016understanding}; Hewitt \& Manning~\cite{hewitt2019structural}), train logistic regression on $M_1$/$M_2$/$M_3$'s per-token representations for \texttt{is\_start\_token} and \texttt{is\_end\_token}. 500 samples, 80/20 split, ROC-AUC. The Pointer itself is a linear projection ($w \cdot [M;\, M']$), so linear probes test the \emph{same type} of information readability.
 
 \small
 \begin{center}
@@ -3242,7 +3502,7 @@ $M_3$ & 0.978 & 0.980\\
 \end{center}
 \normalsize
 
-\textbf{Core finding: no functional specialisation detected.} $M_2$ achieves the highest AUC for \emph{both} start and end, while $M_3$ is slightly lower for both. The expected ``$M_2 \to$ start, $M_3 \to$ end'' specialisation pattern \textbf{does not appear}---all differences are within $\Delta$AUC = 0.001, well below the estimated standard error ($\sim$0.005--0.01), in the range of statistical noise. The three iteration products' boundary information content is statistically indistinguishable.
+No functional specialisation is detected: $M_2$ achieves the highest AUC for \emph{both} start and end, while $M_3$ is slightly lower for both. The expected ``$M_2 \to$ start, $M_3 \to$ end'' specialisation pattern \textbf{does not appear}---all differences are within $\Delta$AUC = 0.001, well below the estimated standard error ($\sim$0.005--0.01), in the range of statistical noise. The three iteration products' boundary information content is statistically indistinguishable.
 
 \textbf{Cross-validation with wiring replacement}: Probes (information level) and wiring replacement (behavioural level) consistently point to $M_2 \geq M_3$. The convergence of two methods strengthens the conclusion's robustness: within the detection scope of our experiments, \textbf{no meaningful functional specialisation is observed} between $M_2$ and $M_3$, and the asymmetric wiring lacks information-level support---this is the \textbf{second unsupported assumption} of the asymmetric design.
 
@@ -3254,9 +3514,9 @@ $M_3$ & 0.978 & 0.980\\
 
 Experiment~2 shows $M_2$ and $M_3$'s boundary information is nearly identical ($\Delta$AUC = 0.001), yet CKA($M_2$, $M_3$) = 0.954, not 1.0---the third iteration did change something. What did it change?
 
-Each encoder block's pipeline is Conv\_0 $\to$ Conv\_1 $\to$ Self-Attention $\to$ FFN. Self-Attention is the only global operation. If the third iteration's Self-Attention aggregates token representations toward the global mean (``over-smoothing''), adjacent tokens become more similar, making precise boundary positions harder to distinguish.
+Each encoder block's pipeline is Conv\_0 $\to$ Conv\_1 $\to$ Self-Attention $\to$ FFN. Self-Attention (Vaswani et al.~\cite{vaswani2017attention}) is the only global operation. Li et al.~\cite{li2018deeper} first identified that iteratively applying message-passing operators in GCNs causes token representations to converge toward the global mean (``over-smoothing''); Dong et al.~\cite{dong2021attention} proved that pure self-attention suffers doubly-exponential rank collapse with depth. QANet's weight-shared iteration applies the \emph{same} self-attention operator three times---a setting that closely mirrors these theoretical concerns. If the third iteration's Self-Attention aggregates representations toward the global mean, adjacent tokens become more similar, making precise boundary positions harder to distinguish.
 
-\textbf{Method}: Compute the following representation structure metrics on $M_1$/$M_2$/$M_3$ (200 samples):
+\textbf{Method}: To detect over-smoothing, we need metrics that capture local discriminability between adjacent token representations. Ethayarajh~\cite{ethayarajh2019contextual} showed that such geometric properties (self-similarity, anisotropy) change systematically across layers of BERT and GPT-2; Kriegeskorte et al.~\cite{kriegeskorte2008representational} provided the general representational similarity framework. We adapt these approaches to measure the $M_1 \to M_2 \to M_3$ trajectory. Compute the following metrics on $M_1$/$M_2$/$M_3$ (200 samples):
 
 \begin{enumerate}
 \item \textbf{Local contrast}: $1 - \cos(\mathbf{h}_t, \mathbf{h}_{t+1})$, averaged. High = adjacent tokens more distinguishable.
@@ -3283,7 +3543,7 @@ Norm CoV & 0.1627 & 0.1361 & 0.1273 & $-6.5\%$\\
 
 \begin{center}
 \SafeIncludeGraphics[width=0.72\linewidth]{prism-uploads/h3_fig2_repr_structure.png}\\[0.3em]
-{\small\textbf{Figure 11.2.} Representation structure across three iteration products. All metrics decrease monotonically $M_1 \to M_2 \to M_3$, with the $M_2 \to M_3$ reduction (local contrast $-28\%$, boundary sharpness $-25\%$) indicating continued smoothing after the second iteration has already captured all incremental boundary information.}
+{\small\textbf{Figure 11.1.} Representation structure across three iteration products. All metrics decrease monotonically $M_1 \to M_2 \to M_3$, with the $M_2 \to M_3$ reduction (local contrast $-28\%$, boundary sharpness $-25\%$) indicating continued smoothing after the second iteration has already captured all incremental boundary information.}
 \end{center}
 
 \FieldLabel{11.7.1 Why does $M_1 \to M_2$ smooth more yet improve information?}
@@ -3306,7 +3566,7 @@ The second iteration smooths \emph{more} than the third (42\% vs 28\%), yet simu
 
 \FieldLabel{11.7.2 Alternative hypothesis: stochastic depth causing insufficient training}
 
-The ``smoothing without return'' explanation above assumes the third iteration's transformation is functionally redundant. A competing explanation exists: during training, stochastic depth skips sub-layers with probability $p_{\text{drop}} \times l/L$ (deeper layers have higher skip probability). Layers 15--21 (traversed only by $M_3$) have the highest skip probability, which may cause $M_3$'s representations to be \textbf{insufficiently trained} rather than ``over-smoothed''---the third iteration's parameters may not have received enough gradient updates to learn useful transformations. If this explanation holds, the $M_2 \to M_3$ structural changes reflect a training regularisation side-effect, not an inherent deficiency of weight-shared iteration. Current experiments cannot distinguish the two hypotheses, as both predict $M_3$ representation quality below $M_2$. We retain both explanations in parallel.
+The ``smoothing without return'' explanation above assumes the third iteration's transformation is functionally redundant. A competing explanation exists: during training, stochastic depth (Huang et al.~\cite{huang2016stochastic}) skips sub-layers with probability $p_{\text{drop}} \times l/L$ (deeper layers have higher skip probability). Layers 15--21 (traversed only by $M_3$) have the highest skip probability, which may cause $M_3$'s representations to be \textbf{insufficiently optimised} rather than ``over-smoothed''---since encoder parameters are weight-shared across all three iterations, the shared weights receive weaker gradient signal from the third pass, biasing them toward the input distributions of earlier iterations. If this explanation holds, the $M_2 \to M_3$ structural changes reflect a training regularisation side-effect, not an inherent deficiency of weight-shared iteration. Current experiments cannot distinguish the two hypotheses, as both predict $M_3$ representation quality below $M_2$. We retain both explanations in parallel.
 
 \FieldLabel{11.7.3 Key tension: structure changes substantially, but information barely changes}
 
@@ -3326,13 +3586,11 @@ Representation structure analysis is descriptive (correlational), not causal. ``
 
 \textbf{Direct answer to H3.} The functional specialisation hypothesis implied by the Pointer's asymmetric wiring \textbf{is not supported in the trained model}. All three assumptions of the asymmetric design fail to find support in our experiments:
 
-\textbf{1.\ Depth specialisation---not detected.} Pre-validation observes a behavioural advantage of only 0.23~F1 for the asymmetric design; the following information-level analysis explains why. Linear probes show $M_2$ achieves the highest AUC for both start (0.979) and end (0.981), with $M_3$ slightly lower for both (start = 0.978, end = 0.980). The expected ``$M_2 \to$ start, $M_3 \to$ end'' specialisation pattern \textbf{does not appear}---all differences are within $\Delta$AUC = 0.001, well below the estimated standard error ($\sim$0.005--0.01), in the range of statistical noise. Wiring replacement (behavioural) and probes (informational) consistently point to $M_2 \geq M_3$.
+\textbf{1.\ Depth specialisation---not detected.} Pre-validation observes a behavioural advantage of only 0.23~F1 for the asymmetric design; the following information-level analysis explains why. Linear probes show $M_2$ achieves the highest AUC for both start (0.979) and end (0.981), with $M_3$ slightly lower for both (start = 0.978, end = 0.980). The expected ``$M_2 \to$ start, $M_3 \to$ end'' specialisation pattern \textbf{does not appear}---all differences are within $\Delta$AUC = 0.001, well below the estimated standard error ($\sim$0.005--0.01), in the range of statistical noise. Wiring replacement (behavioural) and probes (informational) consistently point to $M_2 \geq M_3$; the 0.23~F1 marginal advantage more likely reflects Pointer weight adaptation to training distributions than genuine functional specialisation.
 
 \textbf{2.\ Shared anchor---near-redundant.} Replacing $M_1$ causes only $-0.58$~F1 (behavioural). Pointer weights' $M_2$/$M_3$ quadrant norms are 1.7--2.0$\times$ $M_1$ quadrants (parameter level; $w_1$: 1.97$\times$, $w_2$: 1.69$\times$). CKA($M_1$, $M_2$) = 0.871 shows $M_2$ and $M_1$ share substantial linear structure (information level). All three angles point in the same direction: \textbf{$M_1$ provides negligible incremental value in the $[M_1;\, M_2]$ concatenation}. Note that no\_M1 substitutes $M_2$/$M_3$ into $M_1$'s position (not pure zeroing); the $-0.58$ loss partly reflects representational similarity.
 
-\textbf{3.\ Iterative gain---second iteration captures the vast majority of value; third iteration's marginal contribution is near zero.} The only\_M1 vs sym\_M2 gap of 6.05~F1 shows the second iteration is essential; but the third iteration's marginal F1 contribution is negligible. Experiment~3 observes a noteworthy phenomenon: the third iteration further smooths representation structure (local contrast $-28\%$, boundary sharpness $-25\%$), yet linearly readable boundary information barely changes ($\Delta$AUC = 0.001). Information persists in a more distributed encoding---\textbf{structural change does not equal information loss}. However, $M_3$'s structural changes may partly stem from stochastic depth causing insufficient training (see Experiment~3 limitations), not solely from inherent effects of iteration.
-
-The asymmetric wiring ($M_2 \to$ start, $M_3 \to$ end) outperforms symmetric wiring (sym\_M2) by only 0.23~F1. This marginal advantage finds no support in the boundary information measured by linear probes ($\Delta$AUC = 0.001), and more likely reflects Pointer weight adaptation to training distributions.
+\textbf{3.\ Iterative gain---second iteration captures the vast majority of value; third iteration's marginal contribution is near zero.} The only\_M1 vs sym\_M2 gap of 6.04~F1 shows the second iteration is essential; but the third iteration's marginal F1 contribution is negligible. Experiment~3 observes a noteworthy phenomenon: the third iteration further smooths representation structure (local contrast $-28\%$, boundary sharpness $-25\%$), yet linearly readable boundary information barely changes ($\Delta$AUC = 0.001). Information persists in a more distributed encoding---\textbf{structural change does not equal information loss}. However, $M_3$'s structural changes may partly stem from stochastic depth biasing shared weights toward earlier iterations (see Experiment~3 limitations), not solely from inherent effects of iteration.
 
 \small
 \begin{center}
@@ -3362,6 +3620,193 @@ Three limitations should be kept explicit. First, \textbf{distribution mismatch 
 
 Second, \textbf{causal attribution}: Experiment~3's representation analysis is descriptive. The co-occurrence of ``$M_3$ is smoother'' and ``boundary information format changes'' is observed, not causally established. Full causal verification would require selectively disabling Self-Attention in the third pass---high implementation complexity.
 
-Third, \textbf{stochastic depth training-time effects}: As discussed in Experiment~3's main text, $M_3$'s structural changes may partly stem from stochastic depth causing insufficient training rather than iterative over-smoothing. Current experiments cannot distinguish the two. This is the primary alternative explanation for Conclusion~3 (iterative gain exhaustion).
+Third, \textbf{stochastic depth training-time effects}: As discussed in Experiment~3's main text, $M_3$'s structural changes may partly stem from stochastic depth biasing shared weights toward earlier iterations rather than iterative over-smoothing. Current experiments cannot distinguish the two. This is the primary alternative explanation for Conclusion~3 (iterative gain exhaustion).
+
+% ══════════════════════════════════════════════════════════════════
+% CONCLUDING DISCUSSION
+% ══════════════════════════════════════════════════════════════════
+\clearpage
+
+\ReportSection{12 Concluding Discussion}
+
+This report pursued two objectives: systematically repairing a deliberately flawed QANet implementation (Sections~1--7) and conducting hypothesis-driven mechanistic analyses on the resulting model (Sections~9--11). We conclude by synthesising the insights gained from both parts.
+
+\ReportSubsection{12.1 Debugging: from executability to correctness}
+
+The repair process addressed 56 issues spanning every module of the pipeline---from input embedding and convolution operators through attention mechanisms, output layers, optimisers, schedulers, and training infrastructure. The progression from Stage~I (pipeline executability) to Stage~II (mechanism correctness) revealed a recurring pattern: many errors did not produce runtime failures but silently degraded training dynamics. Incorrect depthwise-separable convolution order, inverted dropout scaling, and flawed bias-correction exponents are representative examples---each is numerically permissible yet distorts the optimisation trajectory. Ensuring that the repaired model trains stably under multiple optimiser families (SGD, SGD-momentum, Adam; Section~8) provided confidence that the codebase is a legitimate experimental platform rather than a fragile special case.
+
+\ReportSubsection{12.2 A unifying pattern across three levels}
+
+Three hypotheses examined QANet at sub-layer (H1), sub-component (H2), and macro (H3) scope. Despite targeting different modules with different methods, a single pattern recurs: \textbf{coexisting critical bottlenecks and near-redundancies}. Conv\_1 is indispensable ($-32.54$~F1) while Conv\_0 is compensable ($-1.09$~F1); C2Q is irreplaceable ($-62.78$~F1) while Q2C is redundant ($-1.03$~F1); $M_2$ captures the vast majority of iterative gain (6.04~F1) while $M_1$ and $M_3$ contribute marginally. At every level, the trained model concentrates its functional dependence on a narrow subset of its architectural capacity.
+
+This convergence is not trivially expected. H1 measures importance via ablation and causal tracing; H2 uses sub-component zeroing and selective corruption; H3 uses wiring replacement and linear probes. That four independent evidence types---behavioural (ablation, wiring replacement), informational (linear probes, CKA), parametric (weight norms), and structural (representational metrics)---all point in the same direction strengthens the conclusion beyond what any single experiment could establish.
+
+A mechanistic thread also connects the three: H1 found that Conv\_1 builds high-discriminability local features; H3 found that iterative Self-Attention progressively consumes them ($M_1 \to M_2 \to M_3$ local contrast drops from 0.116 to 0.048). Meanwhile, H2 showed that the sole cross-stream information pathway (C2Q) is the critical bottleneck \emph{before} the Model Encoder even begins. Together, they trace the flow of task-relevant information from injection (C2Q) through local feature construction (Conv\_1) to iterative refinement (encoder passes)---and identify where diminishing returns set in.
+
+\ReportSubsection{12.3 Connecting debugging and mechanism analysis}
+
+The debugging and mechanism phases are independently motivated but mutually reinforcing. The repair process ensured that every component operates as theoretically intended, so that mechanistic observations can be attributed to the model's learned behaviour rather than to implementation artifacts. Conversely, the mechanism study provided indirect validation of the repair: Conv\_1's importance is reproducible across two independent methods (ablation and causal tracing); the C2Q/Q2C ratio at the qualitative level is consistent with BiDAF's published retraining results despite our use of a different (eval-time) methodology; representational structure metrics show interpretable monotonic patterns across encoder iterations. An incorrectly repaired model would be unlikely to produce such internally consistent and externally corroborated results.
+
+\ReportSubsection{12.4 Limitations and future work}
+
+All mechanistic experiments were conducted at eval time on a single trained checkpoint. While this is appropriate for mechanistic analysis (understanding what the model \emph{currently does}), it cannot distinguish learned behaviour from training-time confounds such as stochastic depth effects (H3) or compensatory adaptation. Retraining-based interventions---varying encoder depth, disabling specific sub-layers during training, or training without weight sharing---would enable causal claims that our current eval-time methodology cannot support. Additionally, the model was trained on a subset of SQuAD~1.1 under constrained compute; whether the observed patterns generalise to full-scale training or other QA datasets remains an open question.
+
+% ══════════════════════════════════════════════════════════════════
+% REFERENCES
+% ══════════════════════════════════════════════════════════════════
+\newpage
+\printbibliography[heading=bibintoc,title={References}]
+
+% ══════════════════════════════════════════════════════════════════
+% APPENDIX
+% ══════════════════════════════════════════════════════════════════
+\newpage
+\appendix
+
+\ReportSection{Appendix A\quad Experimental Hyperparameters}
+
+This appendix lists the hyperparameters of the trained QANet model used across all mechanistic experiments (Sections~9--11). The model was trained on a subset of SQuAD~1.1 (Rajpurkar et al.~\cite{rajpurkar2016squad}) using the Adam optimizer with inverse-log warmup, following the recipe described in Section~8. All mechanism experiments are performed at eval time on the resulting checkpoint; no hyperparameters were modified between hypothesis sections.
+
+\vspace{0.6em}
+
+{\bfseries Table A.1. Model architecture and training configuration}
+
+\vspace{0.3em}
+
+\begin{center}
+\begin{tabularx}{0.96\linewidth}{>{\raggedright\arraybackslash}p{0.30\linewidth}X}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+\multicolumn{2}{l}{\textit{Architecture}} \\[0.2em]
+Hidden dimension ($d_{\text{model}}$) & 96 \\
+Attention heads & 8 \\
+Embedding Encoder & 1 block, 4 convolutions ($k=7$), 1 self-attention, 1 FFN \\
+Model Encoder & 7 blocks $\times$ 3 passes ($\to M_1, M_2, M_3$); 2 convolutions ($k=5$, depthwise separable), 1 self-attention, 1 FFN per block \\
+\midrule
+\multicolumn{2}{l}{\textit{Training}} \\[0.2em]
+Optimizer & Adam ($\beta_1=0.8$, $\beta_2=0.999$, $\varepsilon=10^{-7}$) \\
+Learning rate & $1 \times 10^{-3}$ with inverse-log warmup over 1000 steps \\
+Batch size & 32 \\
+Training budget & 60{,}000 steps; early stopping (patience 50 checkpoints $\times$ 200 steps) \\
+Selected checkpoint & Step 40{,}800 (F1\,=\,70.24, EM\,=\,59.22) \\
+\midrule
+\multicolumn{2}{l}{\textit{Regularisation}} \\[0.2em]
+Dropout & 0.3 \\
+Dropout (char embedding) & 0.15 \\
+Stochastic depth & Coupled with dropout: $p_{\text{drop}}(l) = \text{dropout} \times l/L$; last-layer survival $p_L = 0.7$ \\
+EMA decay & 0.9999 \\
+\midrule
+\multicolumn{2}{l}{\textit{Mechanism experiments (Sections~9--11)}} \\[0.2em]
+Evaluation set & SQuAD 1.1 subset dev split (1{,}309 examples) \\
+Causal tracing samples & 200 (H1, H2); 50 (attention analysis, H1 Exp~3) \\
+Noise scale ($\sigma$) & $3 \times \text{std}(\text{clean activations})$ \\
+Linear probe samples & 500 (80/20 train/test split) \\
+Representation analysis samples & 200 (H1 Exp~2, H3 Exp~3) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\ReportSection{Appendix B\quad Bug Cross-Reference Index}
+
+The bug identifiers used throughout this report (e.g.\ \texttt{BUG-021}, \texttt{BUG-N013}) originate from the Git commit-level indexing system maintained in the project repository. Non-sequential numbering reflects merges, splits, and reorganisation that occurred during the development cycle; each identifier maps one-to-one to a traceable commit on the \texttt{Fix-Stage-1} branch. The table below provides a sequential reading index for convenience.
+
+\small
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\begin{longtable}{
+  >{\centering\arraybackslash}p{0.06\linewidth}
+  >{\ttfamily\raggedright\arraybackslash}p{0.24\linewidth}
+  >{\raggedright\arraybackslash}p{0.16\linewidth}
+  >{\raggedright\arraybackslash}p{0.44\linewidth}}
+\toprule
+\textbf{No.} & \textbf{Report ID} & \textbf{Section} & \textbf{Brief description}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{No.} & \textbf{Report ID} & \textbf{Section} & \textbf{Brief description}\\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+% ── Section 2: Input Embedding & Projection ──
+1  & BUG-021       & \S 2 & Context word/char embedding lookup swap\\
+2  & BUG-012/013   & \S 2 & Highway layer transpose error\\
+3  & BUG-014/015   & \S 2 & Char tensor permutation before Conv2d\\
+4  & BUG-064       & \S 2 & Pre-trained word vectors not frozen\\
+5  & BUG-N013      & \S 2 & Char embedding cross-word leakage\\
+\midrule
+% ── Section 3: Convolution Operators ──
+6  & BUG-006       & \S 3 & Conv1d / unfold dimension mismatch\\
+7  & BUG-007/008   & \S 3 & Conv2d width padding / height mismatch\\
+8  & BUG-009/010/011 & \S 3 & Depthwise-separable conv op order\\
+\midrule
+% ── Section 3: Encoder Architecture ──
+9  & BUG-016       & \S 3 & Positional encoding frequency broadcast\\
+10 & BUG-017/018/019 & \S 3 & Encoder normalisation index error\\
+11 & BUG-N006      & \S 3 & Two-layer FFN structure restored\\
+12 & BUG-N008      & \S 3 & Shared context/question encoder restored\\
+13 & BUG-N009      & \S 3 & Embedding projection to Conv1d(k=1)\\
+14 & BUG-N010      & \S 3 & Model-encoder input projection to Conv1d(k=1)\\
+15 & BUG-N012      & \S 3 & Stochastic depth implemented\\
+\midrule
+% ── Section 3: Normalisation, Activation & Dropout ──
+16 & BUG-004       & \S 3 & LayerNorm keepdim broadcast\\
+17 & BUG-044       & \S 3 & LayerNorm affine order error\\
+18 & BUG-037       & \S 3 & GroupNorm reshape order\\
+19 & BUG-036       & \S 3 & ReLU clamp direction\\
+20 & BUG-035       & \S 3 & LeakyReLU branch logic\\
+21 & BUG-048       & \S 3 & Dropout inverted scaling\\
+\midrule
+% ── Section 3: Weight Initialisation ──
+22 & BUG-041       & \S 3 & Kaiming normal formula\\
+23 & BUG-042       & \S 3 & Kaiming uniform formula\\
+24 & BUG-043       & \S 3 & Xavier normal denominator\\
+25 & BUG-062       & \S 3 & Xavier uniform denominator\\
+\midrule
+% ── Section 4: Attention Mechanisms ──
+26 & BUG-005       & \S 4 & CQAttention batch matmul order\\
+27 & BUG-051       & \S 4 & Context/query mask argument swap\\
+28 & BUG-038/050   & \S 4 & Self-attention output discarded\\
+29 & BUG-N003      & \S 4 & Missing $1/\sqrt{d_k}$ attention scaling\\
+30 & BUG-049       & \S 4 & Multi-head attention head/batch reshape\\
+\midrule
+% ── Section 6: Output Layer & Loss Function ──
+31 & BUG-003       & \S 6 & NLL loss argument order\\
+32 & BUG-020       & \S 6 & Pointer head concatenation dimension\\
+33 & BUG-N007      & \S 6 & Spurious 0.5 loss scaling\\
+34 & BUG-N016      & \S 6 & Output/loss interface unified to raw logits\\
+\midrule
+% ── Section 7: Evaluation & Inference ──
+35 & BUG-001/002   & \S 7 & Checkpoint load key mismatch\\
+36 & BUG-N002      & \S 7 & torch.load weights\_only compatibility\\
+37 & BUG-034       & \S 7 & Eval argmax dimension error\\
+38 & BUG-N011      & \S 7 & Joint span decoding restored\\
+39 & BUG-N018      & \S 7 & Eval checkpoint config not restored\\
+\midrule
+% ── Section 7: Optimizers ──
+40 & BUG-022       & \S 7 & Adam optimizer state key mismatch\\
+41 & BUG-023       & \S 7 & SGD with momentum state key mismatch\\
+42 & BUG-052       & \S 7 & Adam weight decay sign error\\
+43 & BUG-053       & \S 7 & Adam second moment: gradient squared\\
+44 & BUG-039/040   & \S 7 & Adam bias correction exponent error\\
+45 & BUG-054       & \S 7 & SGD weight decay sign error\\
+46 & BUG-055       & \S 7 & SGD momentum update direction\\
+\midrule
+% ── Section 7: Learning Rate Schedulers ──
+47 & BUG-024       & \S 7 & Cosine scheduler math.pi error\\
+48 & BUG-056       & \S 7 & Cosine scheduler missing 0.5 factor\\
+49 & BUG-057       & \S 7 & Lambda scheduler multiplication form\\
+50 & BUG-058       & \S 7 & Step scheduler exponent error\\
+51 & BUG-N001      & \S 7 & Lambda warmup scheduler picklability\\
+\midrule
+% ── Section 7: Training Pipeline ──
+52 & BUG-025       & \S 7 & argparse.Namespace construction error\\
+53 & BUG-026       & \S 7 & loss.item().backward() call error\\
+54 & BUG-059       & \S 7 & Gradient clipping before optimizer.step\\
+55 & BUG-N015      & \S 7 & Explicit best-checkpoint retention\\
+56 & BUG-N017      & \S 7 & EMA integration\\
+\end{longtable}
+\normalsize
 
 \end{document}
