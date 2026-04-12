@@ -1,0 +1,357 @@
+% ═══════════════════════════════════════════════════════════════════
+% Core model and dataset papers
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{yu2018qanet,
+  author    = {Adams Wei Yu and David Dohan and Minh-Thang Luong and Rui Zhao and
+               Kai Chen and Mohammad Norouzi and Quoc V. Le},
+  title     = {{QANet}: Combining Local Convolution with Global Self-Attention for
+               Reading Comprehension},
+  booktitle = {6th International Conference on Learning Representations, {ICLR} 2018,
+               Vancouver, BC, Canada, April 30 - May 3, 2018, Conference Track
+               Proceedings},
+  publisher = {OpenReview.net},
+  year      = {2018},
+  url       = {https://openreview.net/forum?id=B14TlG-RW}
+}
+
+@inproceedings{seo2017bidaf,
+  author    = {Minjoon Seo and Aniruddha Kembhavi and Ali Farhadi and Hannaneh Hajishirzi},
+  title     = {Bidirectional Attention Flow for Machine Comprehension},
+  booktitle = {5th International Conference on Learning Representations, {ICLR} 2017,
+               Toulon, France, April 24-26, 2017, Conference Track Proceedings},
+  publisher = {OpenReview.net},
+  year      = {2017},
+  url       = {https://openreview.net/forum?id=HJ0UKP9ge}
+}
+
+@inproceedings{rajpurkar2016squad,
+  author    = {Pranav Rajpurkar and Jian Zhang and Konstantin Lopyrev and Percy Liang},
+  title     = {{SQuAD}: 100,000+ Questions for Machine Comprehension of Text},
+  booktitle = {Proceedings of the 2016 Conference on Empirical Methods in Natural
+               Language Processing},
+  pages     = {2383--2392},
+  year      = {2016},
+  publisher = {Association for Computational Linguistics},
+  url       = {https://aclanthology.org/D16-1264/},
+  doi       = {10.18653/v1/D16-1264}
+}
+
+@inproceedings{vaswani2017attention,
+  author    = {Ashish Vaswani and Noam Shazeer and Niki Parmar and Jakob Uszkoreit and
+               Llion Jones and Aidan N. Gomez and {\L}ukasz Kaiser and Illia Polosukhin},
+  title     = {Attention Is All You Need},
+  booktitle = {Advances in Neural Information Processing Systems 30: Annual Conference
+               on Neural Information Processing Systems 2017, Long Beach, CA, USA,
+               December 4-9, 2017},
+  pages     = {5998--6008},
+  year      = {2017}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 1: Eval-time ablation / zero-out ablation
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{zeiler2014visualizing,
+  author    = {Matthew D. Zeiler and Rob Fergus},
+  editor    = {David J. Fleet and Tom{\'{a}}s Pajdla and Bernt Schiele and
+               Tinne Tuytelaars},
+  title     = {Visualizing and Understanding Convolutional Networks},
+  booktitle = {Computer Vision - {ECCV} 2014 - 13th European Conference, Zurich,
+               Switzerland, September 6-12, 2014, Proceedings, Part {I}},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {8689},
+  pages     = {818--833},
+  publisher = {Springer},
+  year      = {2014},
+  doi       = {10.1007/978-3-319-10590-1\_53}
+}
+
+@article{meyes2019ablation,
+  author    = {Richard Meyes and Melanie Lu and Constantin Waubert de Puiseau and
+               Tobias Meisen},
+  title     = {Ablation Studies in Artificial Neural Networks},
+  journal   = {CoRR},
+  volume    = {abs/1901.08644},
+  year      = {2019},
+  url       = {http://arxiv.org/abs/1901.08644},
+  eprinttype = {arXiv},
+  eprint    = {1901.08644}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 2: Causal tracing (ROME)
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{meng2022locating,
+  author    = {Kevin Meng and David Bau and Alex Andonian and Yonatan Belinkov},
+  title     = {Locating and Editing Factual Associations in {GPT}},
+  booktitle = {Advances in Neural Information Processing Systems 35: Annual Conference
+               on Neural Information Processing Systems 2022, NeurIPS 2022, New Orleans,
+               LA, USA, November 28 - December 9, 2022},
+  year      = {2022},
+  url       = {http://papers.nips.cc/paper\_files/paper/2022/hash/6f1d43d5a82a37e89b0665b33bf3a182-Abstract-Conference.html}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 3: Linear probing
+% ═══════════════════════════════════════════════════════════════════
+
+@article{alain2016understanding,
+  author    = {Guillaume Alain and Yoshua Bengio},
+  title     = {Understanding intermediate layers using linear classifier probes},
+  journal   = {CoRR},
+  volume    = {abs/1610.01644},
+  year      = {2016},
+  url       = {http://arxiv.org/abs/1610.01644},
+  eprinttype = {arXiv},
+  eprint    = {1610.01644}
+}
+
+@inproceedings{belinkov2017neural,
+  title     = {What do Neural Machine Translation Models Learn about Morphology?},
+  author    = {Belinkov, Yonatan and Durrani, Nadir and Dalvi, Fahim and
+               Sajjad, Hassan and Glass, James},
+  booktitle = {Proceedings of the 55th Annual Meeting of the Association for
+               Computational Linguistics (Volume 1: Long Papers)},
+  pages     = {861--872},
+  year      = {2017},
+  publisher = {Association for Computational Linguistics},
+  url       = {https://aclanthology.org/P17-1080/},
+  doi       = {10.18653/v1/P17-1080}
+}
+
+@inproceedings{hewitt2019structural,
+  title     = {{A} Structural Probe for Finding Syntax in Word Representations},
+  author    = {Hewitt, John and Manning, Christopher D.},
+  booktitle = {Proceedings of the 2019 Conference of the North {A}merican Chapter of
+               the Association for Computational Linguistics: Human Language Technologies,
+               Volume 1 (Long and Short Papers)},
+  pages     = {4129--4138},
+  year      = {2019},
+  publisher = {Association for Computational Linguistics},
+  url       = {https://aclanthology.org/N19-1419/},
+  doi       = {10.18653/v1/N19-1419}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 4: CKA (Centered Kernel Alignment)
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{kornblith2019similarity,
+  title     = {Similarity of Neural Network Representations Revisited},
+  author    = {Kornblith, Simon and Norouzi, Mohammad and Lee, Honglak and
+               Hinton, Geoffrey},
+  booktitle = {Proceedings of the 36th International Conference on Machine Learning},
+  pages     = {3519--3529},
+  year      = {2019},
+  volume    = {97},
+  series    = {Proceedings of Machine Learning Research},
+  publisher = {PMLR},
+  url       = {https://proceedings.mlr.press/v97/kornblith19a.html}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 5: Effective rank
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{roy2007effective,
+  title     = {The Effective Rank: A Measure of Effective Dimensionality},
+  author    = {Roy, Olivier and Vetterli, Martin},
+  booktitle = {2007 15th European Signal Processing Conference ({EUSIPCO})},
+  pages     = {606--610},
+  year      = {2007},
+  month     = sep,
+  address   = {Poznan, Poland},
+  publisher = {IEEE}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 6: Jensen-Shannon divergence
+% ═══════════════════════════════════════════════════════════════════
+
+@article{lin1991divergence,
+  title   = {Divergence Measures Based on the {Shannon} Entropy},
+  author  = {Lin, Jianhua},
+  journal = {IEEE Transactions on Information Theory},
+  year    = {1991},
+  volume  = {37},
+  number  = {1},
+  pages   = {145--151},
+  month   = jan,
+  doi     = {10.1109/18.61115}
+}
+
+@inproceedings{clark2019bert,
+  title     = {What Does {BERT} Look at? An Analysis of {BERT}{'}s Attention},
+  author    = {Clark, Kevin and Khandelwal, Urvashi and Levy, Omer and
+               Manning, Christopher D.},
+  booktitle = {Proceedings of the 2019 ACL Workshop BlackboxNLP: Analyzing and
+               Interpreting Neural Networks for NLP},
+  pages     = {276--286},
+  year      = {2019},
+  publisher = {Association for Computational Linguistics},
+  url       = {https://aclanthology.org/W19-4828/},
+  doi       = {10.18653/v1/W19-4828}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 7: Representational similarity / structure metrics
+% ═══════════════════════════════════════════════════════════════════
+
+@article{kriegeskorte2008representational,
+  title     = {Representational similarity analysis -- connecting the branches of
+               systems neuroscience},
+  author    = {Kriegeskorte, Nikolaus and Mur, Marieke and Bandettini, Peter A.},
+  journal   = {Frontiers in Systems Neuroscience},
+  volume    = {2},
+  pages     = {4},
+  year      = {2008},
+  publisher = {Frontiers},
+  doi       = {10.3389/neuro.06.004.2008}
+}
+
+@inproceedings{ethayarajh2019contextual,
+  title     = {How Contextual are Contextualized Word Representations? {C}omparing
+               the Geometry of {BERT}, {ELM}o, and {GPT}-2 Embeddings},
+  author    = {Ethayarajh, Kawin},
+  booktitle = {Proceedings of the 2019 Conference on Empirical Methods in Natural
+               Language Processing and the 9th International Joint Conference on
+               Natural Language Processing (EMNLP-IJCNLP)},
+  pages     = {55--65},
+  year      = {2019},
+  publisher = {Association for Computational Linguistics},
+  url       = {https://aclanthology.org/D19-1006/},
+  doi       = {10.18653/v1/D19-1006}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 8: Stochastic depth
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{huang2016stochastic,
+  author    = {Gao Huang and Yu Sun and Zhuang Liu and Daniel Sedra and
+               Kilian Q. Weinberger},
+  title     = {Deep Networks with Stochastic Depth},
+  booktitle = {Computer Vision -- {ECCV} 2016: 14th European Conference, Amsterdam,
+               The Netherlands, October 11--14, 2016, Proceedings, Part {IV}},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {9908},
+  pages     = {646--661},
+  publisher = {Springer},
+  year      = {2016},
+  doi       = {10.1007/978-3-319-46493-0\_39}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 9: Over-smoothing
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{li2018deeper,
+  author    = {Qimai Li and Zhichao Han and Xiao-Ming Wu},
+  title     = {Deeper Insights into Graph Convolutional Networks for Semi-Supervised
+               Learning},
+  booktitle = {Proceedings of the Thirty-Second {AAAI} Conference on Artificial
+               Intelligence ({AAAI-18})},
+  pages     = {3538--3545},
+  year      = {2018},
+  publisher = {{AAAI} Press},
+  doi       = {10.1609/aaai.v32i1.11604}
+}
+
+@inproceedings{dong2021attention,
+  title     = {Attention is not all you need: pure attention loses rank doubly
+               exponentially with depth},
+  author    = {Dong, Yihe and Cordonnier, Jean-Baptiste and Loukas, Andreas},
+  booktitle = {Proceedings of the 38th International Conference on Machine Learning},
+  pages     = {2793--2803},
+  year      = {2021},
+  volume    = {139},
+  series    = {Proceedings of Machine Learning Research},
+  publisher = {PMLR},
+  url       = {https://proceedings.mlr.press/v139/dong21a.html}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 10: Weight magnitude / Frobenius norm pruning
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{li2017pruning,
+  title     = {Pruning Filters for Efficient ConvNets},
+  author    = {Li, Hao and Kadav, Asim and Durdanovic, Igor and Samet, Hanan and
+               Graf, Hans Peter},
+  booktitle = {5th International Conference on Learning Representations, {ICLR} 2017,
+               Toulon, France, April 24-26, 2017, Conference Track Proceedings},
+  publisher = {OpenReview.net},
+  year      = {2017},
+  url       = {https://openreview.net/forum?id=rJqFGTslg}
+}
+
+@inproceedings{han2015learning,
+  title     = {Learning both Weights and Connections for Efficient Neural Networks},
+  author    = {Han, Song and Pool, Jeff and Tran, John and Dally, William},
+  booktitle = {Advances in Neural Information Processing Systems},
+  volume    = {28},
+  year      = {2015},
+  publisher = {Curran Associates, Inc.}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 11: Selective corruption / causal mediation
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{vig2020investigating,
+  title     = {Investigating Gender Bias in Language Models Using Causal Mediation
+               Analysis},
+  author    = {Vig, Jesse and Gehrmann, Sebastian and Belinkov, Yonatan and
+               Qian, Sharon and Nevo, Daniel and Singer, Yaron and Shieber, Stuart},
+  booktitle = {Advances in Neural Information Processing Systems 33: Annual Conference
+               on Neural Information Processing Systems 2020, NeurIPS 2020,
+               December 6-12, 2020, virtual},
+  volume    = {33},
+  year      = {2020},
+  publisher = {Curran Associates, Inc.}
+}
+
+@inproceedings{finlayson2021causal,
+  title     = {Causal Analysis of Syntactic Agreement Mechanisms in Neural Language Models},
+  author    = {Finlayson, Matthew and Mueller, Aaron and Gehrmann, Sebastian and
+               Shieber, Stuart and Linzen, Tal and Belinkov, Yonatan},
+  booktitle = {Proceedings of the 59th Annual Meeting of the Association for
+               Computational Linguistics and the 11th International Joint Conference
+               on Natural Language Processing (Volume 1: Long Papers)},
+  pages     = {1828--1843},
+  year      = {2021},
+  publisher = {Association for Computational Linguistics},
+  url       = {https://aclanthology.org/2021.acl-long.144/},
+  doi       = {10.18653/v1/2021.acl-long.144}
+}
+
+% ═══════════════════════════════════════════════════════════════════
+% Method 12: Attention entropy / head analysis
+% ═══════════════════════════════════════════════════════════════════
+
+@inproceedings{voita2019analyzing,
+  title     = {Analyzing Multi-Head Self-Attention: Specialized Heads Do the Heavy
+               Lifting, the Rest Can Be Pruned},
+  author    = {Voita, Elena and Talbot, David and Moiseev, Fedor and
+               Sennrich, Rico and Titov, Ivan},
+  booktitle = {Proceedings of the 57th Annual Meeting of the Association for
+               Computational Linguistics},
+  pages     = {5797--5808},
+  year      = {2019},
+  publisher = {Association for Computational Linguistics},
+  url       = {https://aclanthology.org/P19-1580/},
+  doi       = {10.18653/v1/P19-1580}
+}
+
+@inproceedings{ghader2017attention,
+  title     = {What does Attention in Neural Machine Translation Pay Attention to?},
+  author    = {Ghader, Hamidreza and Monz, Christof},
+  booktitle = {Proceedings of the Eighth International Joint Conference on Natural
+               Language Processing (Volume 1: Long Papers)},
+  pages     = {30--39},
+  year      = {2017},
+  publisher = {Asian Federation of Natural Language Processing},
+  url       = {https://aclanthology.org/I17-1004/}
+}
