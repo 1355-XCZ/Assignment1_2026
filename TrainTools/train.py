@@ -192,6 +192,7 @@ def train(
         history.append({
             "step":       step0 + steps_this_block,
             "train_loss": train_loss,
+            "train_eval_loss": tr_metrics["loss"],
             "train_f1":   tr_metrics["f1"],
             "train_em":   tr_metrics["exact_match"],
             "dev_loss":   dv_metrics["loss"],
