@@ -138,4 +138,6 @@ See `requirements.txt` for the full list.
 
 ## License
 
-This project is coursework for COMP4329/5329 at the University of Sydney. Please do not redistribute..
+This project is coursework for COMP4329/5329 at the University of Sydney. Please do not redistribute.
+
+= ]
