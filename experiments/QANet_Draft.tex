@@ -99,12 +99,25 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\itshape QANet Bug Analysis Report}
-\fancyhead[R]{COMP4329 Deep Learning}
-\fancyfoot[C]{Page \thepage}
-\renewcommand{\headrulewidth}{0.6pt}
-\renewcommand{\footrulewidth}{0.6pt}
-\setlength{\headheight}{14pt}
+\fancyhead[L]{\small COMP5329 / COMP4329\enspace Deep Learning}
+\fancyhead[R]{\small The University of Sydney}
+\fancyfoot[C]{\small Due: Monday, 13 April 2026, 23:59 (Sydney Time)
+              \quad|\quad Page~\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+\setlength{\headheight}{14.5pt}
+
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\fancypagestyle{cover}{
+    \fancyhf{}
+    \renewcommand{\headrulewidth}{0.4pt}
+    \renewcommand{\footrulewidth}{0.4pt}
+    \fancyhead[L]{\small COMP5329 / COMP4329\enspace Deep Learning}
+    \fancyhead[R]{\small The University of Sydney}
+    \fancyfoot[C]{\small Due: Monday, 13 April 2026, 23:59 (Sydney Time)}
+}
 
 \titleformat{\section}[block]
  {\normalfont\bfseries\color{SectionBlue}\fontsize{17}{21}\selectfont}
@@ -264,61 +277,61 @@
 
 % ══════════════════════════════════════════════════════════════════
 % COVER PAGE
-% ══════════════════════════════════════════════════════════════════
-\begin{titlepage}
-\thispagestyle{empty}
-\begin{center}
+% ── Cover Page ──────────────────────────────────────────────
+\thispagestyle{cover}
 
 \vspace*{2cm}
 
-{\fontsize{11}{14}\selectfont\color{MetaGray}
-The University of Sydney\\
-School of Computer Science\\[0.8em]
-COMP4329 Deep Learning --- 2026 Semester 1}
+\begin{center}
+    {\normalsize COMP5329 / COMP4329} \\[0.4em]
+    {\Huge\bfseries \textbf{Deep Learning}}    \\[1.2em]
+    \rule{\linewidth}{0.8pt}          \\[1.0em]
+    {\Large\bfseries Assignment 1: Debugging and Experiments} \\[0.6em]
+    {\large\itshape QANet Bug Repair and Mechanistic Analysis}
+\end{center}
 
 \vspace{2.5cm}
 
-{\bfseries\fontsize{26}{32}\selectfont QANet Bug Analysis Report\par}
+% ── Group Members ───────────────────────────────────────────
+{\bfseries Group Members} \\[-0.5em]
+\rule{\linewidth}{0.4pt}
 
-\vspace{0.8cm}
+\vspace{0.4em}
 
-{\fontsize{14}{18}\selectfont
-Comprehensive Debugging Analysis and\\
-Mechanistic Investigation of a Repaired QANet Implementation\par}
+\begin{tabular}{C{0.8cm} | L{6.2cm} | C{4.0cm} | C{3.2cm}}
+    \toprule
+    \textbf{\#} & \textbf{Full Name} & \textbf{Student ID} & \textbf{UniKey} \\
+    \midrule
+    1 & Haoguang Zhou & 530029731 & hzho0918 \\[1.4em]
+    \midrule
+    2 & Charles Wang  & 530096571 & ywan9676 \\[1.4em]
+    \midrule
+    3 & Peiyao Shou   & 560243660 & psho0719 \\[0.2em]
+    \bottomrule
+\end{tabular}
 
-\vspace{1.2cm}
+\vspace{1.2em}
 
-{\color{SectionRule}\rule{0.6\linewidth}{0.8pt}\par}
-
-\vspace{1.5cm}
-
-{\fontsize{12}{16}\selectfont
-Assignment 1 --- Group Report\par}
-
-\vspace{1.5cm}
-
-{\fontsize{11}{14}\selectfont
-Haoguang Zhou \quad\textbullet\quad Charles Wang \quad\textbullet\quad Peiyao Shou\par}
-
-\vspace{2cm}
-
-{\small
-\textbf{GitHub}\\[0.5em]
-\url{https://github.com/1355-XCZ/Assignment1_2026}
-
-\vspace{1em}
-
-\textbf{Google Drive}\\[0.5em]
-\url{https://drive.google.com/drive/folders/1eOBr8ZURxk3jv8Tn1UxyPXCV26MFCaMY}
-\par}
+% ── Submission Info ─────────────────────────────────────────
+\begin{tabular}{L{3.8cm} | L{11.2cm}}
+    \toprule
+    \textbf{GitHub}            & \url{https://github.com/1355-XCZ/Assignment1_2026} \\
+    \midrule
+    \textbf{Google Drive Link} & \url{https://drive.google.com/drive/folders/1eOBr8ZURxk3jv8Tn1UxyPXCV26MFCaMY} \\
+    \midrule
+    \textbf{Submission Date}   & 13 April 2026 \\
+    \bottomrule
+\end{tabular}
 
 \vspace{\fill}
 
-{\color{MetaGray}\fontsize{11}{14}\selectfont
-\today\par}
-
+\begin{center}
+    \small School of Computer Science \,\textperiodcentered\, Faculty of Engineering \,\textperiodcentered\, The University of Sydney
 \end{center}
-\end{titlepage}
+
+% ── End of Cover Page ───────────────────────────────────────
+\newpage
+\setcounter{page}{1}
 
 % ══════════════════════════════════════════════════════════════════
 % FRONT MATTER — roman page numbers
@@ -445,7 +458,7 @@ AI assistants can produce plausible-sounding but non-existent analytical techniq
 
 \vspace{1em}
 
-\textbf{Report structure.}\quad This report comprises two parts. Sections~1--7 document the debugging and repair of a QANet (Yu et al.~\cite{yu2018qanet}) implementation for extractive question answering on a subset of SQuAD~1.1 (Rajpurkar et al.~\cite{rajpurkar2016squad}). Section~8 confirms the repaired model's baseline performance. Sections~9--11 present three hypothesis-driven mechanistic analyses of the repaired model: encoder convolution divergence (H1), CQ Attention directional asymmetry (H2), and Pointer layer wiring necessity (H3). Two appendices provide hyperparameter details (A) and a bug-ID cross-reference index (B).
+\textbf{Report structure.}\quad This report comprises two parts. Sections~1--7 document the debugging and repair of a QANet (Yu et al.~\cite{yu2018qanet}) implementation for extractive question answering on a subset of SQuAD~1.1 (Rajpurkar et al.~\cite{rajpurkar2016squad}). Section~8 confirms the repaired model's baseline performance. Sections~9--11 present three hypothesis-driven mechanistic analyses of the repaired model: encoder convolution divergence (H1), CQ Attention directional asymmetry (H2), and Pointer layer wiring necessity (H3). Three appendices provide hyperparameter details (A), a bug-ID cross-reference index (B), and a software/foundational-methods summary (C).
 
 \vspace{0.6em}
 
@@ -3811,5 +3824,24 @@ The bug identifiers used throughout this report (e.g.\ \texttt{BUG-021}, \texttt
 56 & BUG-N017      & \S 7 & EMA integration\\
 \end{longtable}
 \normalsize
+
+\ReportSection{Appendix C\quad Implementation Stack}
+
+The following references were provided in the assignment template but were not directly cited in the main text. They correspond to the foundational libraries and techniques on which the QANet codebase is built. We include them here to acknowledge their role in the implementation.
+
+\vspace{0.4em}
+
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{0.22\linewidth}X}
+\toprule
+\textbf{Component} & \textbf{Reference} \\
+\midrule
+Deep learning framework  & PyTorch~\cite{paszke2019pytorch} \\
+Optimiser                & Adam~\cite{kingma2015adam} \\
+Layer normalisation      & Ba et al.~\cite{ba2016layernorm} \\
+Batch normalisation      & Ioffe \& Szegedy~\cite{ioffe2015batchnorm} \\
+Dropout                  & Srivastava et al.~\cite{srivastava2014dropout} \\
+ReLU activation          & Glorot et al.~\cite{glorot2011relu} \\
+\bottomrule
+\end{tabularx}
 
 \end{document}
